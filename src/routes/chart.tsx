@@ -1,0 +1,269 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import dayjs from "dayjs";
+import {
+  TrendingUp,
+  TrendingDown,
+  PiggyBank,
+  PieChart as PieChartIcon,
+  BarChart3,
+  Percent,
+  Layers,
+} from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+import { AppLayout } from "@/layouts/AppLayout";
+import { PageHeader, Panel, StatCard, EmptyState } from "@/components/ui-kit";
+import { useFinance } from "@/context/FinanceContext";
+import { useBalances } from "@/hooks/useBalances";
+import { groupByCategory, sumBy } from "@/utils/finance";
+import { CATEGORY_COLORS } from "@/constants";
+
+export const Route = createFileRoute("/chart")({
+  head: () => ({
+    meta: [
+      { title: "Charts & Analytics — TakaBook" },
+      { name: "description", content: "Interactive visual charts, expense trends, and financial breakdown." },
+      { property: "og:title", content: "Charts & Analytics — TakaBook" },
+      { property: "og:description", content: "Detailed visual charts of your income, expenses, and savings." },
+    ],
+  }),
+  component: ChartPage,
+});
+
+type TimeRange = "this_month" | "3_months" | "6_months" | "this_year";
+
+function ChartPage() {
+  const { transactions, accounts } = useFinance();
+  const b = useBalances();
+  const [range, setRange] = useState<TimeRange>("6_months");
+
+  // Filter transactions based on selected range
+  const filteredTxs = useMemo(() => {
+    const now = dayjs();
+    return transactions.filter((t) => {
+      const d = dayjs(t.date);
+      if (range === "this_month") return d.isSame(now, "month");
+      if (range === "3_months") return d.isAfter(now.subtract(3, "month"));
+      if (range === "6_months") return d.isAfter(now.subtract(6, "month"));
+      if (range === "this_year") return d.isSame(now, "year");
+      return true;
+    });
+  }, [transactions, range]);
+
+  const totalIncome = useMemo(() => sumBy(filteredTxs, "income"), [filteredTxs]);
+  const totalExpense = useMemo(() => sumBy(filteredTxs, "expense"), [filteredTxs]);
+  const netSavings = totalIncome - totalExpense;
+  const savingsRate = totalIncome > 0 ? Math.max(0, Math.round((netSavings / totalIncome) * 100)) : 0;
+
+  // Monthly / Period chart data
+  const chartData = useMemo(() => {
+    let monthCount = 6;
+    if (range === "this_month") monthCount = 1;
+    else if (range === "3_months") monthCount = 3;
+    else if (range === "6_months") monthCount = 6;
+    else if (range === "this_year") monthCount = dayjs().month() + 1;
+
+    return Array.from({ length: monthCount }, (_, i) => {
+      const m = dayjs().subtract(monthCount - 1 - i, "month");
+      const txs = transactions.filter((t) => dayjs(t.date).isSame(m, "month"));
+      const inc = sumBy(txs, "income");
+      const exp = sumBy(txs, "expense");
+      return {
+        month: m.format("MMM YYYY"),
+        Income: inc,
+        Expense: exp,
+        Net: inc - exp,
+      };
+    });
+  }, [transactions, range]);
+
+  // Daily trend for past 14 days
+  const dailyData = useMemo(() => {
+    return Array.from({ length: 14 }, (_, i) => {
+      const d = dayjs().subtract(13 - i, "day");
+      const txs = transactions.filter((t) => dayjs(t.date).isSame(d, "day"));
+      return {
+        date: d.format("DD MMM"),
+        Income: sumBy(txs, "income"),
+        Expense: sumBy(txs, "expense"),
+      };
+    });
+  }, [transactions]);
+
+  // Expense by Category
+  const categoryData = useMemo(() => {
+    const expenses = filteredTxs.filter((t) => t.type === "expense");
+    return groupByCategory(expenses);
+  }, [filteredTxs]);
+
+  // Account Distribution
+  const accountData = useMemo(() => {
+    return accounts
+      .map((a) => ({ name: a.name, value: Math.max(b.balances.get(a.id) ?? 0, 0), color: a.color }))
+      .filter((d) => d.value > 0);
+  }, [accounts, b]);
+
+  const hasData = transactions.length > 0;
+
+  return (
+    <AppLayout>
+      <PageHeader
+        title="Charts & Analytics"
+        subtitle="Visualise income, expense patterns and net balance trends"
+        action={
+          <div className="flex items-center gap-1.5 rounded-xl border border-border bg-card p-1 text-xs">
+            <button
+              onClick={() => setRange("this_month")}
+              className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                range === "this_month" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => setRange("3_months")}
+              className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                range === "3_months" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              3 Months
+            </button>
+            <button
+              onClick={() => setRange("6_months")}
+              className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                range === "6_months" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              6 Months
+            </button>
+            <button
+              onClick={() => setRange("this_year")}
+              className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                range === "this_year" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              This Year
+            </button>
+          </div>
+        }
+      />
+
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-4">
+        <StatCard label="Total Income" value={b.money(totalIncome)} icon={TrendingUp} tone="success" />
+        <StatCard label="Total Expense" value={b.money(totalExpense)} icon={TrendingDown} tone="danger" />
+        <StatCard label="Net Savings" value={b.money(netSavings)} icon={PiggyBank} tone={netSavings >= 0 ? "primary" : "danger"} />
+        <StatCard label="Savings Rate" value={`${savingsRate}%`} icon={Percent} tone={savingsRate >= 20 ? "success" : "warning"} hint="Target > 20%" />
+      </div>
+
+      {!hasData ? (
+        <Panel className="mt-4">
+          <EmptyState icon={BarChart3} title="No transaction records" description="Start logging transactions to view detailed chart analytics." />
+        </Panel>
+      ) : (
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {/* Income vs Expense Area Chart */}
+          <Panel title="Income vs Expense Overview">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorInc" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#16A34A" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#DC2626" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#DC2626" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                  <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} />
+                  <YAxis tickLine={false} axisLine={false} fontSize={12} width={52} />
+                  <Tooltip formatter={(v: number) => b.money(v)} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  <Area type="monotone" dataKey="Income" stroke="#16A34A" strokeWidth={2.5} fillOpacity={1} fill="url(#colorInc)" />
+                  <Area type="monotone" dataKey="Expense" stroke="#DC2626" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExp)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Panel>
+
+          {/* Expense Category Breakdown Pie Chart */}
+          <Panel title="Expense by Category">
+            {categoryData.length ? (
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={100} paddingAngle={3}>
+                      {categoryData.map((_, i) => (
+                        <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => b.money(v)} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyState icon={PieChartIcon} title="No expenses recorded for this period" />
+            )}
+          </Panel>
+
+          {/* Daily 14-Day Trend Bar Chart */}
+          <Panel title="Recent Daily Trend (Last 14 Days)">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dailyData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                  <XAxis dataKey="date" tickLine={false} axisLine={false} fontSize={11} />
+                  <YAxis tickLine={false} axisLine={false} fontSize={12} width={48} />
+                  <Tooltip formatter={(v: number) => b.money(v)} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="Income" fill="#16A34A" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Expense" fill="#DC2626" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Panel>
+
+          {/* Wallet Balance Distribution */}
+          <Panel title="Current Wallet Balances">
+            {accountData.length ? (
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={accountData} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" />
+                    <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
+                    <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} fontSize={12} width={80} />
+                    <Tooltip formatter={(v: number) => b.money(v)} />
+                    <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                      {accountData.map((d, i) => (
+                        <Cell key={i} fill={d.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyState icon={Layers} title="No active wallet balances" />
+            )}
+          </Panel>
+        </div>
+      )}
+    </AppLayout>
+  );
+}

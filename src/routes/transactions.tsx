@@ -1,0 +1,272 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import dayjs from "dayjs";
+import { Pencil, Trash2, Search, Receipt, Plus, ArrowUpDown } from "lucide-react";
+import { AppLayout } from "@/layouts/AppLayout";
+import { PageHeader, Panel, EmptyState } from "@/components/ui-kit";
+import { TransactionDialog } from "@/components/TransactionDialog";
+import { useFinance } from "@/context/FinanceContext";
+import { useBalances } from "@/hooks/useBalances";
+import { AccountIcon } from "@/components/AccountIcon";
+import { inRange, type RangeKey } from "@/utils/finance";
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/constants";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import type { Transaction } from "@/types";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+export const Route = createFileRoute("/transactions")({
+  head: () => ({
+    meta: [
+      { title: "Transactions — TakaBook" },
+      { name: "description", content: "Search, filter, edit and delete every income and expense record." },
+      { property: "og:title", content: "Transactions — TakaBook" },
+      { property: "og:description", content: "A complete searchable history of your money in and out." },
+    ],
+  }),
+  component: TransactionsPage,
+});
+
+const RANGES: { key: RangeKey; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "week", label: "This Week" },
+  { key: "month", label: "This Month" },
+  { key: "year", label: "This Year" },
+];
+
+function TransactionsPage() {
+  const { transactions, accounts, deleteTransaction, ready } = useFinance();
+  const b = useBalances();
+
+  const [query, setQuery] = useState("");
+  const [range, setRange] = useState<RangeKey>("all");
+  const [type, setType] = useState<"all" | "income" | "expense">("all");
+  const [account, setAccount] = useState("all");
+  const [category, setCategory] = useState("all");
+  const [sortDesc, setSortDesc] = useState(true);
+  const [editing, setEditing] = useState<Transaction | null>(null);
+  const [open, setOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
+
+  const rows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return transactions
+      .filter((t) => inRange(t.date, range))
+      .filter((t) => type === "all" || t.type === type)
+      .filter((t) => account === "all" || t.accountId === account)
+      .filter((t) => category === "all" || t.category === category)
+      .filter(
+        (t) =>
+          !q ||
+          t.title.toLowerCase().includes(q) ||
+          t.category.toLowerCase().includes(q) ||
+          (t.note ?? "").toLowerCase().includes(q),
+      )
+      .sort((a, c) => (sortDesc ? c.date.localeCompare(a.date) : a.date.localeCompare(c.date)));
+  }, [transactions, query, range, type, account, category, sortDesc]);
+
+  const selectCls =
+    "h-10 rounded-lg border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40";
+
+  return (
+    <AppLayout>
+      <PageHeader
+        title="Transactions"
+        subtitle={`${rows.length} record${rows.length === 1 ? "" : "s"}`}
+        action={
+          <Button
+            className="gap-2"
+            onClick={() => {
+              setEditing(null);
+              setOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4" /> Add
+          </Button>
+        }
+      />
+
+      <Panel className="mb-4">
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="Search title, category or note"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                onClick={() => setRange(r.key)}
+                className={cn(
+                  "rounded-full border border-border px-3 py-1.5 text-xs font-semibold transition",
+                  range === r.key
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            <select className={selectCls} value={type} onChange={(e) => setType(e.target.value as typeof type)}>
+              <option value="all">All types</option>
+              <option value="income">Income</option>
+              <option value="expense">Expense</option>
+            </select>
+            <select className={selectCls} value={account} onChange={(e) => setAccount(e.target.value)}>
+              <option value="all">All accounts</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+            <select className={selectCls} value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="all">All categories</option>
+              {[...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES]
+                .filter((c, i, arr) => arr.indexOf(c) === i)
+                .map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+            </select>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel>
+        {!ready ? (
+          <div className="space-y-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-12 animate-pulse rounded-xl bg-muted" />
+            ))}
+          </div>
+        ) : rows.length === 0 ? (
+          <EmptyState icon={Receipt} title="No transactions found" description="Try adjusting your filters or add a new record." />
+        ) : (
+          <div className="-mx-4 overflow-x-auto sm:mx-0">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-3 font-semibold">
+                    <button className="inline-flex items-center gap-1" onClick={() => setSortDesc((s) => !s)}>
+                      Date <ArrowUpDown className="h-3 w-3" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-semibold">Title</th>
+                  <th className="px-4 py-3 font-semibold">Account</th>
+                  <th className="px-4 py-3 font-semibold">Category</th>
+                  <th className="px-4 py-3 font-semibold">Type</th>
+                  <th className="px-4 py-3 text-right font-semibold">Amount</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((t) => (
+                  <tr key={t.id} className="border-b border-border/60 transition hover:bg-muted/50">
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                      {dayjs(t.date).format("DD MMM YYYY")}
+                    </td>
+                    <td className="max-w-[220px] truncate px-4 py-3 font-semibold">{t.title}</td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span className="inline-flex items-center gap-2">
+                        <AccountIcon accountId={t.accountId} sizeClassName="h-4 w-4" />
+                        {b.accountName(t.accountId)}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{t.category}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={cn(
+                          "rounded-full px-2.5 py-1 text-xs font-semibold capitalize",
+                          t.type === "income" ? "bg-success-soft text-success" : "bg-danger-soft text-danger",
+                        )}
+                      >
+                        {t.type}
+                      </span>
+                    </td>
+                    <td
+                      className={cn(
+                        "whitespace-nowrap px-4 py-3 text-right font-bold",
+                        t.type === "income" ? "text-success" : "text-danger",
+                      )}
+                    >
+                      {t.type === "income" ? "+" : "-"}
+                      {b.money(t.amount)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <button
+                        aria-label="Edit"
+                        className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                        onClick={() => {
+                          setEditing(t);
+                          setOpen(true);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        aria-label="Delete"
+                        className="rounded-lg p-2 text-muted-foreground transition hover:bg-danger-soft hover:text-danger"
+                        onClick={() => setPendingDelete(t)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+
+      <TransactionDialog open={open} onOpenChange={setOpen} transaction={editing} />
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(v) => !v && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this transaction?</AlertDialogTitle>
+            <AlertDialogDescription>
+              “{pendingDelete?.title}” will be removed permanently and account balances will update.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDelete) deleteTransaction(pendingDelete.id);
+                setPendingDelete(null);
+                toast.success("Transaction deleted");
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </AppLayout>
+  );
+}

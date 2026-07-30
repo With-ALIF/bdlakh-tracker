@@ -29,4 +29,8 @@ dist-ssr
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+# Lockfiles
+package-lock.json
+bun.lock
+yarn.lock
+pnpm-lock.yaml
