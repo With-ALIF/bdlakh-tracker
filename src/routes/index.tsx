@@ -21,19 +21,7 @@ import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/")({
   head: () => ({
-    meta: [
-      { title: "Dashboard — Money Mate Income & Expense Tracker" },
-      {
-        name: "description",
-        content:
-          "Track daily income and expenses across Cash, Bkash, Nagad, Rocket and bank accounts in Bangladeshi Taka.",
-      },
-      { property: "og:title", content: "Money Mate — Daily Income & Expense Tracker" },
-      {
-        property: "og:description",
-        content: "A premium offline personal finance manager for Bangladesh, powered by local storage.",
-      },
-    ],
+    meta: [],
   }),
   component: Dashboard,
 });
@@ -130,7 +118,11 @@ function Dashboard() {
             icon={Receipt}
             title="Nothing recorded yet"
             description="Start by adding your first income or expense."
-            action={<Button onClick={() => setOpen(true)}>Add transaction</Button>}
+            action={
+           <Button onClick={() => setOpen(true)} className="gap-2">
+             <Plus className="h-4 w-4" /> Quick add
+           </Button>
+         }
           />
         )}
       </Panel>

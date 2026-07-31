@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
 import {
-  Plus, Search, TrendingUp, TrendingDown, Users, AlertCircle,
+  Plus, Search, TrendingUp, TrendingDown, Users,
 } from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
 import { PageHeader } from "@/components/ui-kit";
@@ -61,7 +61,6 @@ function LoanPage() {
   const totalReceivable = loans.filter((l) => l.direction === "receivable" && l.status !== "completed").reduce((s, l) => s + remainingAmount(l), 0);
   const totalPayable    = loans.filter((l) => l.direction === "payable"    && l.status !== "completed").reduce((s, l) => s + remainingAmount(l), 0);
   const activeContacts  = new Set(loans.filter((l) => l.status === "active").map((l) => l.contactName)).size;
-  const overdueCount    = loans.filter((l) => l.status === "overdue").length;
 
   if (selectedLoan) {
     return (
@@ -89,7 +88,6 @@ function LoanPage() {
         <StatCard icon={TrendingUp}  iconColor="text-emerald-500" bg="bg-emerald-500/10" label="Total Receivable" value={fmt(totalReceivable)} />
         <StatCard icon={TrendingDown} iconColor="text-rose-500"   bg="bg-rose-500/10"    label="Total Payable"   value={fmt(totalPayable)}    />
         <StatCard icon={Users}        iconColor="text-blue-500"   bg="bg-blue-500/10"    label="Active Contacts" value={String(activeContacts)} />
-        <StatCard icon={AlertCircle}  iconColor="text-amber-500"  bg="bg-amber-500/10"   label="Overdue Loans"   value={String(overdueCount)}  />
       </div>
 
       {/* Search + Filters */}
@@ -114,7 +112,6 @@ function LoanPage() {
               <SelectItem value="payable">Payable</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="overdue">Overdue</SelectItem>
             </SelectContent>
           </Select>
         </div>

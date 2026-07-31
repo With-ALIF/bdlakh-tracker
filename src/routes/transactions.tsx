@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import dayjs from "dayjs";
 import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
 import isSameOrBefore from "dayjs/plugin/isSameOrBefore";
-import { Pencil, Trash2, Search, Receipt, Plus, ArrowUpDown, FileDown } from "lucide-react";
+import { Pencil, Trash2, Search, Receipt, ArrowUpDown, FileDown } from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
 import { TransactionDialog } from "@/components/TransactionDialog";
 import { ReportDialog } from "@/components/ReportDialog";
@@ -42,6 +42,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { generatePdfReport } from "@/utils/pdfReport";
 
 export const Route = createFileRoute("/transactions")({
   head: () => ({
@@ -106,6 +107,47 @@ function TransactionsPage() {
       .sort((a, c) => (sortDesc ? c.date.localeCompare(a.date) : a.date.localeCompare(c.date)));
   }, [transactions, query, range, customFromDate, customToDate, type, account, category, sortDesc]);
 
+  // PDF generation for current filtered transactions
+  const generatePDFDirect = async () => {
+    if (!rows.length) {
+      toast.error('No transactions to export');
+      return;
+    }
+    const income = rows.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expense = rows.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+    let from: string;
+    let to = dayjs().format('YYYY-MM-DD');
+    if (range === 'custom') {
+      from = customFromDate;
+      to = customToDate;
+    } else if (range === 'all') {
+      from = transactions.reduce((m, t) => (t.date < m ? t.date : m), dayjs().format('YYYY-MM-DD'));
+      to = transactions.reduce((m, t) => (t.date > m ? t.date : m), from);
+    } else if (range === 'today') {
+      from = to;
+    } else if (range === 'yesterday') {
+      from = to = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+    } else if (range === 'week') {
+      from = dayjs().startOf('week').format('YYYY-MM-DD');
+    } else if (range === 'month') {
+      from = dayjs().startOf('month').format('YYYY-MM-DD');
+    } else {
+      from = dayjs().startOf('year').format('YYYY-MM-DD');
+    }
+
+    await generatePdfReport({
+      rows,
+      type: type === 'all' ? 'both' : type,
+      from,
+      to,
+      fileName: `transactions-${dayjs().format('YYYYMMDD-HHmm')}.pdf`,
+      income,
+      expense,
+      accountName: (id) => b.accountName(id),
+    });
+    toast.success('PDF downloaded');
+  };
   const selectCls =
     "h-10 rounded-lg border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40";
 
@@ -116,17 +158,8 @@ function TransactionsPage() {
         subtitle={`${rows.length} record${rows.length === 1 ? "" : "s"}`}
         action={
           <div className="flex gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => setReportOpen(true)}>
+            <Button variant="outline" className="gap-2" onClick={generatePDFDirect}>
               <FileDown className="h-4 w-4" /> <span className="hidden sm:inline">PDF</span> Report
-            </Button>
-            <Button
-              className="gap-2"
-              onClick={() => {
-                setEditing(null);
-                setOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" /> Add
             </Button>
           </div>
         }
@@ -137,7 +170,7 @@ function TransactionsPage() {
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="pl-9" 
+              className="pl-9"
               placeholder="Search title, category or note"
               value={query}
               onChange={(e) => setQuery(e.target.value)}

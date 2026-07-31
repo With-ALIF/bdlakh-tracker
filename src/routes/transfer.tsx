@@ -216,16 +216,29 @@ function TransferPage() {
               />
             </div>
 
-            {hasCharge && charge > 0 && (
+            {Number(form.amount) > 0 && (
               <div className="space-y-2 rounded-lg bg-muted/50 p-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Transfer Charge</span>
-                  <span className="font-medium">{b.money(charge)}</span>
+                  <span className="text-muted-foreground">Transfer Amount</span>
+                  <span className="font-medium">{b.money(Number(form.amount))}</span>
                 </div>
-                <div className="flex justify-between font-semibold">
+                {hasCharge && charge > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Transfer Charge</span>
+                    <span className="font-medium">{b.money(charge)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-border/60 pt-2 font-semibold">
                   <span>Total to Debit</span>
-                  <span>{b.money(totalDebit)}</span>
+                  <span className={totalDebit > (b.balances.get(form.fromAccountId) ?? 0) ? "text-danger" : ""}>
+                    {b.money(totalDebit)}
+                  </span>
                 </div>
+                {totalDebit > (b.balances.get(form.fromAccountId) ?? 0) && (
+                  <p className="text-xs font-medium text-danger">
+                    Insufficient balance in {b.accountName(form.fromAccountId)} — available {b.money(b.balances.get(form.fromAccountId) ?? 0)}
+                  </p>
+                )}
               </div>
             )}
 

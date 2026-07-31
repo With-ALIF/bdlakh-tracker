@@ -23,11 +23,10 @@ export function PaymentDialog({ open, onOpenChange, loanId, defaultAccountId, de
     amount: defaultAmount ? String(defaultAmount) : "",
     date: today,
     accountId: defaultAccountId ?? accounts[0]?.id ?? "",
-    note: "",
   });
 
   const handleOpen = (v: boolean) => {
-    if (v) setForm({ amount: defaultAmount ? String(defaultAmount) : "", date: today, accountId: defaultAccountId ?? accounts[0]?.id ?? "", note: "" });
+    if (v) setForm({ amount: defaultAmount ? String(defaultAmount) : "", date: today, accountId: defaultAccountId ?? accounts[0]?.id ?? "" });
     onOpenChange(v);
   };
 
@@ -35,7 +34,7 @@ export function PaymentDialog({ open, onOpenChange, loanId, defaultAccountId, de
     e.preventDefault();
     const amt = parseFloat(form.amount);
     if (!amt || amt <= 0) { toast.error("Enter a valid amount"); return; }
-    addLoanPayment(loanId, { amount: amt, date: form.date, accountId: form.accountId || undefined, note: form.note || undefined });
+    addLoanPayment(loanId, { amount: amt, date: form.date, accountId: form.accountId || undefined });
     toast.success("Payment recorded");
     onOpenChange(false);
   };
@@ -56,7 +55,6 @@ export function PaymentDialog({ open, onOpenChange, loanId, defaultAccountId, de
             </select>
           </div>
           <div className="space-y-1.5"><Label className="text-xs font-semibold uppercase text-muted-foreground">Date</Label><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold uppercase text-muted-foreground">Note (optional)</Label><Input placeholder="e.g. Partial payment" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></div>
           <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit">Save Payment</Button></div>
         </form>
       </DialogContent>
@@ -73,10 +71,10 @@ export function IncreaseDialog({ open, onOpenChange, loanId, defaultAccountId, d
 }) {
   const { accounts, addLoanIncrease } = useFinance();
   const today = new Date().toISOString().slice(0, 10);
-  const [form, setForm] = useState({ amount: "", date: today, accountId: defaultAccountId ?? accounts[0]?.id ?? "", note: "" });
+  const [form, setForm] = useState({ amount: "", date: today, accountId: defaultAccountId ?? accounts[0]?.id ?? "" });
 
   const handleOpen = (v: boolean) => {
-    if (v) setForm({ amount: "", date: today, accountId: defaultAccountId ?? accounts[0]?.id ?? "", note: "" });
+    if (v) setForm({ amount: "", date: today, accountId: defaultAccountId ?? accounts[0]?.id ?? "" });
     onOpenChange(v);
   };
 
@@ -84,7 +82,7 @@ export function IncreaseDialog({ open, onOpenChange, loanId, defaultAccountId, d
     e.preventDefault();
     const amt = parseFloat(form.amount);
     if (!amt || amt <= 0) { toast.error("Enter a valid amount"); return; }
-    addLoanIncrease(loanId, { amount: amt, date: form.date, accountId: form.accountId || undefined, note: form.note || undefined });
+    addLoanIncrease(loanId, { amount: amt, date: form.date, accountId: form.accountId || undefined });
     toast.success(direction === "receivable" ? "Additional loan given" : "Additional loan taken");
     onOpenChange(false);
   };
@@ -105,7 +103,6 @@ export function IncreaseDialog({ open, onOpenChange, loanId, defaultAccountId, d
             </select>
           </div>
           <div className="space-y-1.5"><Label className="text-xs font-semibold uppercase text-muted-foreground">Date</Label><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold uppercase text-muted-foreground">Note (optional)</Label><Input placeholder="e.g. Second installment" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></div>
           <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit">Add to Loan</Button></div>
         </form>
       </DialogContent>

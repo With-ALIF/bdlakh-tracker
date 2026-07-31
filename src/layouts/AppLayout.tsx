@@ -80,13 +80,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <span className="block truncate text-xs font-semibold">{user.name}</span>
             <span className="block truncate text-[11px] text-muted-foreground">{user.email}</span>
           </span>
-          <button
-            onClick={signOut}
-            aria-label="Sign out"
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-danger"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
         </div>
       </aside>
 
@@ -103,13 +96,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <Plus className="h-4 w-4" />
             </button>
           )}
-          <button
-            onClick={signOut}
-            aria-label="Sign out"
-            className="grid h-9 w-9 place-items-center rounded-xl border border-border bg-primary-soft text-xs font-bold uppercase text-primary transition-colors hover:text-danger"
-          >
-            {user.name.slice(0, 1)}
-          </button>
+            <div className="grid h-9 w-9 place-items-center rounded-xl border border-border bg-primary-soft text-xs font-bold uppercase text-primary">
+              {user.name.slice(0, 1)}
+            </div>
         </div>
       </header>
 
@@ -139,11 +128,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
 function Brand() {
   return (
-    <Link to="/" className="flex min-w-0 items-center gap-2.5">
+    <div className="flex min-w-0 items-center gap-2.5">
       <img src="https://i.postimg.cc/LsGN35xY/moneymate.png" alt="Money Mate Logo" className="h-9 w-9" />
       <span className="min-w-0">
         <span className="block truncate text-sm font-bold tracking-tight text-primary">MoneyMate</span>
       </span>
-    </Link>
+    </div>
   );
 }

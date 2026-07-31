@@ -127,7 +127,7 @@ export function LoanCard({ loan, onSelect }: { loan: Loan; onSelect: () => void 
           <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
             <div><p className="text-[11px] font-medium text-muted-foreground">Remaining</p><p className="font-bold">{fmt(remaining)}</p></div>
             <div><p className="text-[11px] font-medium text-muted-foreground">Total</p><p className="font-semibold">{fmt(loan.totalAmount)}</p></div>
-            <div><p className="text-[11px] font-medium text-muted-foreground">Paid</p><p className="font-semibold">{fmt(paid)}</p></div>
+            <div><p className="text-[11px] font-medium text-muted-foreground">{loan.direction === "receivable" ? "Received" : "Paid"}</p><p className="font-semibold">{fmt(paid)}</p></div>
           </div>
           <div className="mt-4">
             <div className="mb-1.5 flex items-center justify-between text-[11px]"><span className="font-medium text-muted-foreground">Progress</span><span className="font-bold">{pct}%</span></div>
