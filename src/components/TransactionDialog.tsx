@@ -13,9 +13,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useFinance } from "@/context/FinanceContext";
+import { useBalances } from "@/hooks/useBalances";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/constants";
 import type { Transaction } from "@/types";
 import { cn } from "@/lib/utils";
@@ -27,7 +27,6 @@ const schema = z.object({
   accountId: z.string().min(1, "Select an account"),
   category: z.string().min(1, "Select a category"),
   date: z.string().min(1, "Date is required"),
-  note: z.string().optional(),
 });
 
 type FormValues = z.input<typeof schema>;
@@ -41,6 +40,7 @@ interface Props {
 
 export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
   const { accounts, addTransaction, updateTransaction } = useFinance();
+  const b = useBalances();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -51,7 +51,6 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
       accountId: accounts[0]?.id ?? "cash",
       category: "Food",
       date: dayjs().format("YYYY-MM-DD"),
-      note: "",
     },
   });
 
@@ -62,7 +61,7 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
     if (!open) return;
     form.reset(
       transaction
-        ? { ...transaction, note: transaction.note ?? "" }
+        ? { ...transaction }
         : {
             title: "",
             amount: "" as unknown as number,
@@ -70,7 +69,6 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
             accountId: accounts[0]?.id ?? "cash",
             category: "Food",
             date: dayjs().format("YYYY-MM-DD"),
-            note: "",
           },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,6 +76,18 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
 
   const onSubmit = form.handleSubmit((raw) => {
     const values = schema.parse(raw);
+
+    if (values.type === "expense") {
+      const currentBal = b.balances.get(values.accountId) ?? 0;
+      const prevAmount = transaction && transaction.accountId === values.accountId && transaction.type === "expense" ? transaction.amount : 0;
+      const available = currentBal + prevAmount;
+
+      if (values.amount > available) {
+        toast.error(`Insufficient balance in ${b.accountName(values.accountId)}. Available: ${b.money(available)}`);
+        return;
+      }
+    }
+
     if (transaction) {
       updateTransaction(transaction.id, values);
       toast.success("Transaction updated");
@@ -93,8 +103,8 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
       <DialogContent className="max-h-[92vh] overflow-y-auto rounded-2xl sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{transaction ? "Edit transaction" : "Add transaction"}</DialogTitle>
-          <DialogDescription>
-            Record money coming in or going out of one of your accounts.
+          <DialogDescription className="font-bold text-primary">
+            Record money {type === "income" ? "coming in to" : "going out of"} one of your accounts.
           </DialogDescription>
         </DialogHeader>
 
@@ -161,10 +171,6 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
 
           <Field label="Date" error={form.formState.errors.date?.message}>
             <Input type="date" {...form.register("date")} />
-          </Field>
-
-          <Field label="Note (optional)">
-            <Textarea rows={2} placeholder="Add a note" {...form.register("note")} />
           </Field>
 
           <div className="flex justify-end gap-2 pt-2">

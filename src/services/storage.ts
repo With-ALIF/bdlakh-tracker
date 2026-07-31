@@ -8,6 +8,7 @@ export const emptyData = (): AppData => ({
   transactions: [],
   transfers: [],
   budgets: [],
+  loans: [],
   settings: { ...DEFAULT_SETTINGS },
 });
 
@@ -19,10 +20,17 @@ export function loadData(): AppData {
     const parsed = JSON.parse(raw) as Partial<AppData>;
     const base = emptyData();
     return {
-      accounts: parsed.accounts?.length ? parsed.accounts : base.accounts,
+      accounts: parsed.accounts?.length
+        ? parsed.accounts.map((a) => {
+            // Always keep name/icon/color in sync for default accounts
+            const def = base.accounts.find((d) => d.id === a.id && d.isDefault);
+            return def ? { ...a, name: def.name, icon: def.icon, color: def.color } : a;
+          })
+        : base.accounts,
       transactions: parsed.transactions ?? [],
       transfers: parsed.transfers ?? [],
       budgets: parsed.budgets ?? [],
+      loans: parsed.loans ?? [],
       settings: { ...base.settings, ...(parsed.settings ?? {}) },
     };
   } catch (err) {

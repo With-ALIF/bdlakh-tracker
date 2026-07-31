@@ -46,7 +46,7 @@ export const ACCOUNT_COLORS = [
 
 export const DEFAULT_ACCOUNTS: Account[] = [
   { id: "cash", name: "Cash", icon: "wallet", color: "#16A34A", openingBalance: 0, isDefault: true },
-  { id: "bkash", name: "bKash", icon: "smartphone", color: "#DB2777", openingBalance: 0, isDefault: true },
+  { id: "bkash", name: "Bkash", icon: "smartphone", color: "#DB2777", openingBalance: 0, isDefault: true },
   { id: "nagad", name: "Nagad", icon: "smartphone", color: "#F59E0B", openingBalance: 0, isDefault: true },
   { id: "rocket", name: "Rocket", icon: "smartphone", color: "#7C3AED", openingBalance: 0, isDefault: true },
   { id: "bank", name: "Bank Account", icon: "landmark", color: "#2563EB", openingBalance: 0, isDefault: true },
@@ -59,25 +59,34 @@ export const BANK_ACCOUNT_IDS = ["bank"];
 
 export const INCOME_CATEGORIES = [
   "Salary",
-  "Freelancing",
+  "Freelancing", 
   "Business",
   "Investment",
   "Gift",
   "Bonus",
+  "Loan Taken",
+  "Loan Repayment",
   "Others",
 ];
 
 export const EXPENSE_CATEGORIES = [
   "Food",
+  "Groceries",
   "Shopping",
+  "Clothing",
   "Transport",
   "Mobile Recharge",
-  "Internet",
+  "Internet Bill",
   "Electricity",
   "Gas",
   "Rent",
   "Education",
+  "Tuition",
   "Medicine",
+  "Loan Given",
+  "Loan Payment",
+  "EMI",
+  "Savings",
   "Entertainment",
   "Travel",
   "Others",
@@ -96,6 +105,11 @@ export const CATEGORY_COLORS = [
   "#4F46E5",
   "#0D9488",
   "#B91C1C",
+  "#8B5CF6",
+  "#EC4899",
+  "#10B981",
+  "#F97316",
+  "#6366F1",
   "#475569",
 ];
 

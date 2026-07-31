@@ -1,22 +1,7 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
-
 @custom-variant dark (&:is(.dark *));
-
-/*
- * Design system definition.
- *
- * The @theme inline block maps CSS custom properties to Tailwind utility
- * classes (e.g. --color-primary -> bg-primary, text-primary).
- *
- * The :root and .dark blocks define the actual color values using oklch.
- * All colors MUST use oklch format.
- *
- * To add a new semantic color:
- * 1. Add the variable to :root (light value) and .dark (dark value)
- * 2. Register it in @theme inline as --color-<name>: var(--<name>)
- */
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -82,9 +67,9 @@
   --card-foreground: oklch(0.21 0.034 264.4);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.21 0.034 264.4);
-  --primary: oklch(0.546 0.215 262.9);
+  --primary: oklch(0.55 0.2 285);
   --primary-foreground: oklch(1 0 0);
-  --primary-soft: oklch(0.955 0.024 262.9);
+  --primary-soft: oklch(0.95 0.03 285);
   --secondary: oklch(0.968 0.007 247.896);
   --secondary-foreground: oklch(0.28 0.037 264.4);
   --muted: oklch(0.968 0.007 247.896);
@@ -104,20 +89,20 @@
   --danger-soft: oklch(0.958 0.032 25);
   --border: oklch(0.929 0.013 255.508);
   --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.546 0.215 262.9);
-  --chart-1: oklch(0.546 0.215 262.9);
+  --ring: oklch(0.55 0.2 285);
+  --chart-1: oklch(0.55 0.2 285);
   --chart-2: oklch(0.596 0.145 154);
   --chart-3: oklch(0.769 0.163 70);
   --chart-4: oklch(0.577 0.245 27.325);
   --chart-5: oklch(0.55 0.2 300);
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.21 0.034 264.4);
-  --sidebar-primary: oklch(0.546 0.215 262.9);
+  --sidebar-primary: oklch(0.55 0.2 285);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.955 0.024 262.9);
+  --sidebar-accent: oklch(0.95 0.03 285);
   --sidebar-accent-foreground: oklch(0.44 0.19 262.9);
   --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.546 0.215 262.9);
+  --sidebar-ring: oklch(0.55 0.2 285);
 }
 
 .dark {

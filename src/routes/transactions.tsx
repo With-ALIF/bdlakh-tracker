@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import dayjs from "dayjs";
-import { Pencil, Trash2, Search, Receipt, Plus, ArrowUpDown } from "lucide-react";
+import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
+import isSameOrBefore from "dayjs/plugin/isSameOrBefore";
+import { Pencil, Trash2, Search, Receipt, Plus, ArrowUpDown, FileDown } from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
-import { PageHeader, Panel, EmptyState } from "@/components/ui-kit";
 import { TransactionDialog } from "@/components/TransactionDialog";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
@@ -12,6 +13,8 @@ import { inRange, type RangeKey } from "@/utils/finance";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/constants";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { PageHeader, Panel, EmptyState } from "@/components/ui-kit";
 import type { Transaction } from "@/types";
 import {
   AlertDialog,
@@ -23,28 +26,45 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/transactions")({
   head: () => ({
     meta: [
-      { title: "Transactions — TakaBook" },
+      { title: "Transactions — Money Mate" },
       { name: "description", content: "Search, filter, edit and delete every income and expense record." },
-      { property: "og:title", content: "Transactions — TakaBook" },
+      { property: "og:title", content: "Transactions — Money Mate" },
       { property: "og:description", content: "A complete searchable history of your money in and out." },
     ],
   }),
   component: TransactionsPage,
 });
 
-const RANGES: { key: RangeKey; label: string }[] = [
+dayjs.extend(isSameOrAfter);
+dayjs.extend(isSameOrBefore);
+
+const RANGES: { key: RangeKey | "custom"; label: string }[] = [
   { key: "all", label: "All" },
   { key: "today", label: "Today" },
   { key: "yesterday", label: "Yesterday" },
   { key: "week", label: "This Week" },
   { key: "month", label: "This Month" },
   { key: "year", label: "This Year" },
+  { key: "custom", label: "Custom..." },
 ];
 
 function TransactionsPage() {
@@ -52,31 +72,38 @@ function TransactionsPage() {
   const b = useBalances();
 
   const [query, setQuery] = useState("");
-  const [range, setRange] = useState<RangeKey>("all");
+  const [range, setRange] = useState<RangeKey | "custom">("all");
   const [type, setType] = useState<"all" | "income" | "expense">("all");
   const [account, setAccount] = useState("all");
   const [category, setCategory] = useState("all");
   const [sortDesc, setSortDesc] = useState(true);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [open, setOpen] = useState(false);
+  const [customFromDate, setCustomFromDate] = useState(dayjs().startOf("month").format("YYYY-MM-DD"));
+  const [customToDate, setCustomToDate] = useState(dayjs().endOf("month").format("YYYY-MM-DD"));
+  const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return transactions
-      .filter((t) => inRange(t.date, range))
+      .filter((t) => {
+        if (range === "custom") {
+          const txDate = dayjs(t.date);
+          const fromDate = dayjs(customFromDate);
+          const toDate = dayjs(customToDate);
+          return txDate.isSameOrAfter(fromDate, 'day') && txDate.isSameOrBefore(toDate, 'day');
+        }
+        return inRange(t.date, range as RangeKey);
+      })
       .filter((t) => type === "all" || t.type === type)
       .filter((t) => account === "all" || t.accountId === account)
       .filter((t) => category === "all" || t.category === category)
-      .filter(
-        (t) =>
-          !q ||
-          t.title.toLowerCase().includes(q) ||
-          t.category.toLowerCase().includes(q) ||
-          (t.note ?? "").toLowerCase().includes(q),
-      )
+      .filter((t) => !q || t.title.toLowerCase().includes(q) || t.category.toLowerCase().includes(q))
       .sort((a, c) => (sortDesc ? c.date.localeCompare(a.date) : a.date.localeCompare(c.date)));
-  }, [transactions, query, range, type, account, category, sortDesc]);
+  }, [transactions, query, range, customFromDate, customToDate, type, account, category, sortDesc]);
 
   const selectCls =
     "h-10 rounded-lg border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40";
@@ -87,15 +114,20 @@ function TransactionsPage() {
         title="Transactions"
         subtitle={`${rows.length} record${rows.length === 1 ? "" : "s"}`}
         action={
-          <Button
-            className="gap-2"
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" /> Add
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => setReportOpen(true)}>
+              <FileDown className="h-4 w-4" /> <span className="hidden sm:inline">PDF</span> Report
+            </Button>
+            <Button
+              className="gap-2"
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" /> Add
+            </Button>
+          </div>
         }
       />
 
@@ -104,31 +136,31 @@ function TransactionsPage() {
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="pl-9"
+              className="pl-9" 
               placeholder="Search title, category or note"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {RANGES.map((r) => (
-              <button
-                key={r.key}
-                onClick={() => setRange(r.key)}
-                className={cn(
-                  "rounded-full border border-border px-3 py-1.5 text-xs font-semibold transition",
-                  range === r.key
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted",
-                )}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <Select
+              value={range}
+              onValueChange={(v: RangeKey | "custom") => {
+                if (v === "custom") {
+                  setCustomRangeOpen(true);
+                } else {
+                  setRange(v);
+                }
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a range" />
+              </SelectTrigger>
+              <SelectContent>
+                {RANGES.map((r) => <SelectItem key={r.key} value={r.key}>{r.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <select className={selectCls} value={type} onChange={(e) => setType(e.target.value as typeof type)}>
               <option value="all">All types</option>
               <option value="income">Income</option>
@@ -189,14 +221,14 @@ function TransactionsPage() {
                     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                       {dayjs(t.date).format("DD MMM YYYY")}
                     </td>
-                    <td className="max-w-[220px] truncate px-4 py-3 font-semibold">{t.title}</td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="max-w-[220px] truncate px-4 py-3 font-semibold capitalize">{t.title}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                       <span className="inline-flex items-center gap-2">
                         <AccountIcon accountId={t.accountId} sizeClassName="h-4 w-4" />
                         {b.accountName(t.accountId)}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{t.category}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground capitalize">{t.category}</td>
                     <td className="px-4 py-3">
                       <span
                         className={cn(
@@ -245,6 +277,22 @@ function TransactionsPage() {
 
       <TransactionDialog open={open} onOpenChange={setOpen} transaction={editing} />
 
+      <CustomRangeDialog
+        open={customRangeOpen}
+        onOpenChange={setCustomRangeOpen}
+        from={customFromDate}
+        to={customToDate}
+        onApply={(from, to) => {
+          if (dayjs(from).isAfter(dayjs(to))) {
+            toast.error("'From' date cannot be after 'To' date.");
+            return;
+          }
+          setCustomFromDate(from);
+          setCustomToDate(to);
+          setRange("custom");
+        }}
+      />
+
       <AlertDialog open={!!pendingDelete} onOpenChange={(v) => !v && setPendingDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -268,5 +316,52 @@ function TransactionsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </AppLayout>
+  );
+}
+
+import { useEffect } from "react";
+
+function CustomRangeDialog({ open, onOpenChange, from, to, onApply }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  from: string;
+  to: string;
+  onApply: (from: string, to: string) => void;
+}) {
+  const [localFrom, setLocalFrom] = useState(from);
+  const [localTo, setLocalTo] = useState(to);
+
+  useEffect(() => {
+    if (open) {
+      setLocalFrom(from);
+      setLocalTo(to);
+    }
+  }, [open, from, to]);
+
+  const handleApply = () => {
+    if (dayjs(localFrom).isAfter(dayjs(localTo))) {
+      toast.error("'From' date cannot be after 'To' date.");
+      return;
+    }
+    onApply(localFrom, localTo);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Select Custom Date Range</DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-4 py-4">
+          <div className="space-y-1.5"><Label>From</Label><Input type="date" value={localFrom} onChange={e => setLocalFrom(e.target.value)} /></div>
+          <div className="space-y-1.5"><Label>To</Label><Input type="date" value={localTo} onChange={e => setLocalTo(e.target.value)} /></div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleApply}>Apply Range</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

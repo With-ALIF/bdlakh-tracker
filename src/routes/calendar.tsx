@@ -12,9 +12,9 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/calendar")({
   head: () => ({
     meta: [
-      { title: "Calendar — TakaBook" },
+      { title: "Calendar — Money Mate" },
       { name: "description", content: "Browse your income and expenses day by day in a monthly calendar view." },
-      { property: "og:title", content: "Calendar — TakaBook" },
+      { property: "og:title", content: "Calendar — Money Mate" },
       { property: "og:description", content: "Tap any day to review that day's transactions." },
     ],
   }),

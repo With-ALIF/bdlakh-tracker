@@ -22,13 +22,13 @@ import { Button } from "@/components/ui/button";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Dashboard — TakaBook Income & Expense Tracker" },
+      { title: "Dashboard — Money Mate Income & Expense Tracker" },
       {
         name: "description",
         content:
-          "Track daily income and expenses across Cash, bKash, Nagad, Rocket and bank accounts in Bangladeshi Taka.",
+          "Track daily income and expenses across Cash, Bkash, Nagad, Rocket and bank accounts in Bangladeshi Taka.",
       },
-      { property: "og:title", content: "TakaBook — Daily Income & Expense Tracker" },
+      { property: "og:title", content: "Money Mate — Daily Income & Expense Tracker" },
       {
         property: "og:description",
         content: "A premium offline personal finance manager for Bangladesh, powered by local storage.",
@@ -72,7 +72,7 @@ function Dashboard() {
       </div>
 
       <Panel
-        title="Recent transactions"
+        title="RECENT TRANSACTIONS"
         className="mt-4"
         action={
           <Link to="/transactions" className="text-xs font-semibold text-primary hover:underline">
@@ -103,9 +103,9 @@ function Dashboard() {
                     )}
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{t.title}</p>
+                    <p className="truncate text-sm font-semibold capitalize">{t.title}</p>
                     <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                      <span>{t.category}</span>
+                      <span className="capitalize">{t.category}</span>
                       <span>·</span>
                       <span className="inline-flex items-center gap-1">
                         <AccountIcon accountId={t.accountId} sizeClassName="h-3.5 w-3.5" />

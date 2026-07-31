@@ -27,9 +27,9 @@ import { CATEGORY_COLORS } from "@/constants";
 export const Route = createFileRoute("/statistics")({
   head: () => ({
     meta: [
-      { title: "Statistics — TakaBook" },
+      { title: "Statistics — Money Mate" },
       { name: "description", content: "Visualise spending trends, category breakdowns and account distribution." },
-      { property: "og:title", content: "Statistics — TakaBook" },
+      { property: "og:title", content: "Statistics — Money Mate" },
       { property: "og:description", content: "Charts and insights for your monthly income and expenses." },
     ],
   }),

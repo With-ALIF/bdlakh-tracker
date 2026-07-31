@@ -1,6 +1,6 @@
-# ৳ TakaBook — Personal Daily Income & Expense Tracker for Bangladesh
+# ৳ Money Mate — Personal Daily Income & Expense Tracker for Bangladesh
 
-A modern, offline-first personal finance application tailored for Bangladesh. Seamlessly track daily income, expenses, and internal money transfers across **Cash**, **Bank Accounts**, and Mobile Financial Services (**bKash**, **Nagad**, **Rocket**) with real-time balance calculations, rich interactive charts, and local storage data persistence.
+A modern, offline-first personal finance application tailored for Bangladesh. Seamlessly track daily income, expenses, and internal money transfers across **Cash**, **Bank Accounts**, and Mobile Financial Services (**Bkash**, **Nagad**, **Rocket**) with real-time balance calculations, rich interactive charts, and local storage data persistence.
 
 ---
 
@@ -15,7 +15,7 @@ A modern, offline-first personal finance application tailored for Bangladesh. Se
 - **Supported Payment Accounts**:
   - 💵 **Cash** (with custom Cash branding)
   - 🏦 **Bank Account** (with Bank emblem branding)
-  - 💖 **bKash** (official MFS logo)
+  - 💖 **Bkash** (official MFS logo)
   - 🟧 **Nagad** (official MFS logo)
   - 🚀 **Rocket** (official MFS logo)
 - **Account Actions**:
@@ -37,7 +37,7 @@ A modern, offline-first personal finance application tailored for Bangladesh. Se
   - Savings Rate (%) with target benchmark indicator (`> 20%`).
 
 ### 4. 💸 Internal Money Transfers (`/transfer`)
-- Record transfers between any two accounts (e.g. `Cash → bKash`, `bKash → Bank`, `Bank → Nagad`, `Rocket → Cash`).
+- Record transfers between any two accounts (e.g. `Cash → Bkash`, `Bkash → Bank`, `Bank → Nagad`, `Rocket → Cash`).
 - Automatically decrements the source account balance and increments the destination account balance.
 - Detailed transfer log with date, notes, and visual direction indicators.
 
@@ -47,7 +47,7 @@ A modern, offline-first personal finance application tailored for Bangladesh. Se
   - Full-text search by title or note.
   - Time range filter (**Today**, **Yesterday**, **This Week**, **This Month**, **This Year**).
   - Type filter (**Income**, **Expense**).
-  - Account filter (Cash, bKash, Nagad, Rocket, Bank).
+  - Account filter (Cash, Bkash, Nagad, Rocket, Bank).
   - Category filter.
 - **Actions**: Sort by date, edit transaction, or delete with confirmation dialog.
 
@@ -71,15 +71,20 @@ A modern, offline-first personal finance application tailored for Bangladesh. Se
 | Income Categories | Expense Categories |
 | :--- | :--- |
 | 💼 Salary | 🍲 Food |
-| 💻 Freelancing | 🛍️ Shopping |
-| 🏬 Business | 🚌 Transport |
-| 📈 Investment | 📱 Mobile Recharge |
-| 🎁 Gift | 🌐 Internet |
-| 🪙 Bonus | ⚡ Electricity |
-| 🏷️ Others | 🛢️ Gas |
+| 💻 Freelancing | 🛒 Groceries |
+| 🏬 Business | 🛍️ Shopping |
+| 📈 Investment | 👕 Clothing |
+| 🎁 Gift | 🚌 Transport |
+| 🪙 Bonus | 📱 Mobile Recharge |
+| 🏷️ Others | 🌐 Internet Bill |
+| | ⚡ Electricity |
+| | 🛢️ Gas |
 | | 🏠 Rent |
 | | 🎓 Education |
 | | 💊 Medicine |
+| | 🏦 Loan Payment |
+| | 💳 EMI |
+| | 🐷 Savings |
 | | 🍿 Entertainment |
 | | ✈️ Travel |
 | | 🏷️ Others |
@@ -135,7 +140,7 @@ npm run build
 The optimized static build files will be located in the `dist/` directory.
 
 ### Deploying to Vercel / Netlify
-Because **TakaBook** is a purely client-side SPA (Single Page Application) with Local Storage data persistence:
+Because **Money Mate** is a purely client-side SPA (Single Page Application) with Local Storage data persistence:
 1. Connect your GitHub repository (`With-ALIF/bdlakh-tracker`).
 2. Set Build Command: `npm run build`
 3. Set Output Directory: `dist`
@@ -180,7 +185,7 @@ bdlakh-tracker/
 
 ## 🔒 Privacy & Data Security
 
-TakaBook operates **100% client-side**. No telemetry, tracking cookies, or server calls are made. Your financial records never leave your browser device.
+Money Mate operates **100% client-side**. No telemetry, tracking cookies, or server calls are made. Your financial records never leave your browser device.
 
 ---
 

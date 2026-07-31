@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { ArrowLeftRight, ArrowRight, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -11,22 +11,77 @@ import { AccountIcon } from "@/components/AccountIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import type { Transfer } from "@/types";
 
 export const Route = createFileRoute("/transfer")({
   head: () => ({
     meta: [
-      { title: "Transfer Money — TakaBook" },
-      { name: "description", content: "Move money between Cash, bKash, Nagad, Rocket and your bank account." },
-      { property: "og:title", content: "Transfer Money — TakaBook" },
+      { title: "Transfer Money — Money Mate" },
+      { name: "description", content: "Move money between Cash, Bkash, Nagad, Rocket and your bank account." },
+      { property: "og:title", content: "Transfer Money — Money Mate" },
       { property: "og:description", content: "Record internal transfers and keep every wallet balance accurate." },
     ],
   }),
   component: TransferPage,
 });
 
+const TRANSFER_CHARGES: Record<string, number> = {
+  // MFS to Cash (Cash Out)
+  bkash_to_cash: 1.85 / 100,
+  nagad_to_cash: 1.45 / 100,
+  rocket_to_cash: 1.67 / 100,
+
+  // MFS to Bank/MFS (Send Money with charge) - New Rules
+  nagad_to_bank: 0.85 / 100,
+  nagad_to_bkash: 0.85 / 100,
+  bkash_to_bank: 0.85 / 100,
+  bkash_to_nagad: 0.85 / 100,
+  bank_to_cash: 0.00 / 100, // No charge for bank to cash
+};
+
+/**
+ * Calculates the charge for a transfer.
+ * @returns The charge, total debit amount, and whether a charge is applicable.
+ */
+function calculateTransferCharge(
+  fromAccountId: string,
+  toAccountId: string,
+  amount: number,
+  getAccountName: (id: string) => string | undefined,
+) {
+  const fromAccountName = getAccountName(fromAccountId)?.toLowerCase() ?? "";
+  let toAccountName = getAccountName(toAccountId)?.toLowerCase() ?? "";
+
+  if (toAccountName.includes("bank")) {
+    toAccountName = "bank";
+  }
+
+  const chargeKey = `${fromAccountName}_to_${toAccountName}`;
+  const chargeRate = TRANSFER_CHARGES[chargeKey];
+
+  if (!chargeRate || amount <= 0) {
+    return { charge: 0, totalDebit: amount, hasCharge: false };
+  }
+
+  const rawCharge = amount * chargeRate;
+  const charge = Math.round(rawCharge * 100) / 100;
+
+  return { charge, totalDebit: amount + charge, hasCharge: true };
+}
+
 function TransferPage() {
-  const { accounts, transfers, addTransfer, deleteTransfer } = useFinance();
+  const { accounts, transfers, addTransfer, addTransaction, deleteTransfer } = useFinance();
   const b = useBalances();
 
   const [form, setForm] = useState({
@@ -37,14 +92,24 @@ function TransferPage() {
     note: "",
   });
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Transfer | null>(null);
+
+  const { charge, totalDebit, hasCharge } = useMemo(
+    () => calculateTransferCharge(form.fromAccountId, form.toAccountId, Number(form.amount) || 0, b.accountName),
+    [form.fromAccountId, form.toAccountId, form.amount, b.accountName],
+  );
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
   const selectCls =
     "h-10 w-full rounded-lg border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40";
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleConfirmTransfer = () => {
     const amount = Number(form.amount);
-    if (!amount || amount <= 0) return toast.error("Enter a positive amount");
-    if (form.fromAccountId === form.toAccountId) return toast.error("Choose two different accounts");
     addTransfer({
       fromAccountId: form.fromAccountId,
       toAccountId: form.toAccountId,
@@ -52,8 +117,48 @@ function TransferPage() {
       date: form.date,
       note: form.note,
     });
+
+    if (hasCharge && charge > 0) {
+      addTransaction({
+        type: "expense",
+        amount: charge,
+        date: form.date,
+        accountId: form.fromAccountId,
+        category: "Transfer Charge",
+        title: `Cash Out Charge from ${b.accountName(form.fromAccountId)}`,
+        note: `Fee for transferring ${b.money(amount)}`,
+      });
+    }
+
     setForm({ ...form, amount: "", note: "" });
     toast.success("Transfer saved");
+    setIsSubmitting(false);
+    setConfirmOpen(false);
+  };
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    const amount = Number(form.amount);
+    if (!amount || amount <= 0) {
+      toast.error("Enter a positive amount");
+      setIsSubmitting(false);
+      return;
+    }
+    if (form.fromAccountId === form.toAccountId) {
+      toast.error("Choose two different accounts");
+      setIsSubmitting(false);
+      return;
+    }
+
+    const currentBal = b.balances.get(form.fromAccountId) ?? 0;
+    if (totalDebit > currentBal) {
+      toast.error(`Insufficient balance in ${b.accountName(form.fromAccountId)}. Available: ${b.money(currentBal)}`);
+      setIsSubmitting(false);
+      return;
+    }
+
+    setConfirmOpen(true);
   };
 
   return (
@@ -67,10 +172,11 @@ function TransferPage() {
               <Label className="text-xs font-semibold uppercase text-muted-foreground">From</Label>
               <select
                 className={selectCls}
+                name="fromAccountId"
                 value={form.fromAccountId}
-                onChange={(e) => setForm({ ...form, fromAccountId: e.target.value })}
+                onChange={handleFormChange}
               >
-                {accounts.map((a) => (
+                {accounts.filter(a => a.id !== form.toAccountId).map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} — {b.money(b.balances.get(a.id) ?? 0)}
                   </option>
@@ -86,10 +192,11 @@ function TransferPage() {
               <Label className="text-xs font-semibold uppercase text-muted-foreground">To</Label>
               <select
                 className={selectCls}
+                name="toAccountId"
                 value={form.toAccountId}
-                onChange={(e) => setForm({ ...form, toAccountId: e.target.value })}
+                onChange={handleFormChange}
               >
-                {accounts.map((a) => (
+                {accounts.filter(a => a.id !== form.fromAccountId).map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} — {b.money(b.balances.get(a.id) ?? 0)}
                   </option>
@@ -102,21 +209,32 @@ function TransferPage() {
                 type="number"
                 min="0"
                 step="0.01"
+                name="amount"
                 placeholder="0"
                 value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                onChange={handleFormChange}
               />
             </div>
+
+            {hasCharge && charge > 0 && (
+              <div className="space-y-2 rounded-lg bg-muted/50 p-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Transfer Charge</span>
+                  <span className="font-medium">{b.money(charge)}</span>
+                </div>
+                <div className="flex justify-between font-semibold">
+                  <span>Total to Debit</span>
+                  <span>{b.money(totalDebit)}</span>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase text-muted-foreground">Date</Label>
-              <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+              <Input type="date" name="date" value={form.date} onChange={handleFormChange} />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase text-muted-foreground">Note</Label>
-              <Textarea rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
-            </div>
-            <Button type="submit" className="w-full">
-              Transfer money
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Transferring..." : "Transfer money"}
             </Button>
           </form>
         </Panel>
@@ -145,16 +263,32 @@ function TransferPage() {
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="text-sm font-bold">{b.money(t.amount)}</span>
-                    <button
-                      aria-label="Delete transfer"
-                      onClick={() => {
-                        deleteTransfer(t.id);
-                        toast.success("Transfer removed");
-                      }}
-                      className="rounded-lg p-2 text-muted-foreground transition hover:bg-danger-soft hover:text-danger"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <button aria-label="Delete transfer" className="rounded-lg p-2 text-muted-foreground transition hover:bg-danger-soft hover:text-danger">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete this transfer?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently remove the transfer record and update account balances. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => {
+                              deleteTransfer(t.id);
+                              toast.success("Transfer removed");
+                            }}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </li>
               ))}
@@ -167,6 +301,28 @@ function TransferPage() {
             />
           )}
         </Panel>
+
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Transfer</AlertDialogTitle>
+              <AlertDialogDescription>
+                <p>Please review the details before confirming the transfer.</p>
+                <div className="mt-4 space-y-2 rounded-lg border border-border bg-muted/50 p-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Transfer Charge</span>
+                    <span className="font-medium">{b.money(charge)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold">
+                    <span>Total to Debit</span>
+                    <span>{b.money(totalDebit)}</span>
+                  </div>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter><AlertDialogCancel onClick={() => setIsSubmitting(false)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleConfirmTransfer}>Confirm</AlertDialogAction></AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppLayout>
   );

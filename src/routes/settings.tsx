@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef } from "react";
 import dayjs from "dayjs";
-import { Download, Upload, Trash2, FileJson, FileSpreadsheet } from "lucide-react";
+import { Download, Upload, Trash2, FileJson, FileSpreadsheet, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/layouts/AppLayout";
 import { PageHeader, Panel } from "@/components/ui-kit";
+import { useAuth } from "@/context/AuthContext";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
 import { downloadFile, toCSV } from "@/utils/finance";
@@ -26,9 +27,9 @@ import {
 export const Route = createFileRoute("/settings")({
   head: () => ({
     meta: [
-      { title: "Settings & Backup — TakaBook" },
+      { title: "Settings & Backup — Money Mate" },
       { name: "description", content: "Export CSV or JSON, restore a backup, and manage your local data." },
-      { property: "og:title", content: "Settings & Backup — TakaBook" },
+      { property: "og:title", content: "Settings & Backup — Money Mate" },
       { property: "og:description", content: "Your data stays on this device — back it up any time." },
     ],
   }),
@@ -37,13 +38,14 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsPage() {
   const finance = useFinance();
+  const { signOut } = useAuth();
   const { accounts, transactions, transfers, budgets, settings, updateSettings, replaceAll, resetAll } = finance;
   const b = useBalances();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const exportJSON = () => {
-    const data: AppData = { accounts, transactions, transfers, budgets, settings };
-    downloadFile(`takabook-backup-${dayjs().format("YYYY-MM-DD")}.json`, JSON.stringify(data, null, 2), "application/json");
+    const data: AppData = { accounts, transactions, transfers, budgets, loans: finance.loans, settings };
+    downloadFile(`moneymate-backup-${dayjs().format("YYYY-MM-DD")}.json`, JSON.stringify(data, null, 2), "application/json");
     toast.success("Backup downloaded");
   };
 
@@ -61,7 +63,7 @@ function SettingsPage() {
       Amount: t.amount,
       Note: t.note ?? "",
     }));
-    downloadFile(`takabook-transactions-${dayjs().format("YYYY-MM-DD")}.csv`, toCSV(rows), "text/csv");
+    downloadFile(`moneymate-transactions-${dayjs().format("YYYY-MM-DD")}.csv`, toCSV(rows), "text/csv");
     toast.success("CSV exported");
   };
 
@@ -76,6 +78,7 @@ function SettingsPage() {
           transactions: parsed.transactions,
           transfers: parsed.transfers ?? [],
           budgets: parsed.budgets ?? [],
+          loans: parsed.loans ?? [],
           settings: { ...settings, ...(parsed.settings ?? {}) },
         });
         toast.success("Data restored");
@@ -149,6 +152,9 @@ function SettingsPage() {
               <Upload className="h-4 w-4" /> Restore from JSON file
             </Button>
 
+            <Button variant="outline" className="w-full justify-start gap-2" onClick={signOut}>
+              <LogOut className="h-4 w-4" /> Log Out
+            </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" className="w-full justify-start gap-2">

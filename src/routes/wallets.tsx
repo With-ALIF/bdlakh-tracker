@@ -34,9 +34,9 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/wallets")({
   head: () => ({
     meta: [
-      { title: "Wallets & Accounts — TakaBook" },
-      { name: "description", content: "Manage Cash, bKash, Nagad, Rocket and bank accounts with live balances." },
-      { property: "og:title", content: "Wallets & Accounts — TakaBook" },
+      { title: "Wallets & Accounts — Money Mate" },
+      { name: "description", content: "Manage Cash, Bkash, Nagad, Rocket and bank accounts with live balances." },
+      { property: "og:title", content: "Wallets & Accounts — Money Mate" },
       { property: "og:description", content: "Add, edit and organise all of your money accounts in one place." },
     ],
   }),
@@ -112,9 +112,6 @@ function WalletsPage() {
                   </span>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold">{a.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {a.isDefault ? "Default account" : "Custom account"}
-                    </p>
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1">

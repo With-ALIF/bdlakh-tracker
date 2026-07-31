@@ -26,6 +26,9 @@ export interface Transaction {
   date: string;
   note?: string;
   createdAt: string;
+  loanId?: string;
+  loanPaymentId?: string;
+  loanIncreaseId?: string;
 }
 
 export interface Transfer {
@@ -46,6 +49,43 @@ export interface Budget {
   month: string;
 }
 
+export type LoanDirection = "receivable" | "payable";
+export type LoanStatus = "active" | "completed" | "overdue";
+
+export interface LoanPayment {
+  id: string;
+  date: string; // ISO date
+  amount: number;
+  accountId?: string;
+  note?: string;
+}
+
+export interface LoanIncrease {
+  id: string;
+  date: string; // ISO date
+  amount: number;
+  accountId?: string;
+  note?: string;
+}
+
+export interface Loan {
+  id: string;
+  contactName: string;
+  contactPhone?: string;
+  direction: LoanDirection; // receivable = others owe me, payable = I owe others
+  totalAmount: number;
+  payments: LoanPayment[];
+  increases?: LoanIncrease[];
+  accountId: string;
+  loanType: string; // "Personal Loan", "Emergency Loan", etc.
+  loanDate: string; // ISO date
+  dueDate?: string; // ISO date
+  note?: string;
+  status: LoanStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Settings {
   currency: string;
   numberFormat: "en-US" | "en-IN" | "bn-BD";
@@ -56,5 +96,6 @@ export interface AppData {
   transactions: Transaction[];
   transfers: Transfer[];
   budgets: Budget[];
+  loans: Loan[];
   settings: Settings;
 }
