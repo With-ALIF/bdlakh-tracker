@@ -15,7 +15,6 @@ import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as ChartRouteImport } from './routes/chart'
 import { Route as LoanRouteImport } from './routes/loan'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as StatisticsRouteImport } from './routes/statistics'
 import { Route as TransactionsRouteImport } from './routes/transactions'
 import { Route as TransferRouteImport } from './routes/transfer'
 import { Route as WalletsRouteImport } from './routes/wallets'
@@ -50,11 +49,6 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
-const StatisticsRoute = StatisticsRouteImport.update({
-  id: '/statistics',
-  path: '/statistics',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const TransactionsRoute = TransactionsRouteImport.update({
   id: '/transactions',
   path: '/transactions',
@@ -78,7 +72,6 @@ export interface FileRoutesByFullPath {
   '/chart': typeof ChartRoute
   '/loan': typeof LoanRoute
   '/settings': typeof SettingsRoute
-  '/statistics': typeof StatisticsRoute
   '/transactions': typeof TransactionsRoute
   '/transfer': typeof TransferRoute
   '/wallets': typeof WalletsRoute
@@ -90,7 +83,6 @@ export interface FileRoutesByTo {
   '/chart': typeof ChartRoute
   '/loan': typeof LoanRoute
   '/settings': typeof SettingsRoute
-  '/statistics': typeof StatisticsRoute
   '/transactions': typeof TransactionsRoute
   '/transfer': typeof TransferRoute
   '/wallets': typeof WalletsRoute
@@ -103,7 +95,6 @@ export interface FileRoutesById {
   '/chart': typeof ChartRoute
   '/loan': typeof LoanRoute
   '/settings': typeof SettingsRoute
-  '/statistics': typeof StatisticsRoute
   '/transactions': typeof TransactionsRoute
   '/transfer': typeof TransferRoute
   '/wallets': typeof WalletsRoute
@@ -117,7 +108,6 @@ export interface FileRouteTypes {
     | '/chart'
     | '/loan'
     | '/settings'
-    | '/statistics'
     | '/transactions'
     | '/transfer'
     | '/wallets'
@@ -129,7 +119,6 @@ export interface FileRouteTypes {
     | '/chart'
     | '/loan'
     | '/settings'
-    | '/statistics'
     | '/transactions'
     | '/transfer'
     | '/wallets'
@@ -141,7 +130,6 @@ export interface FileRouteTypes {
     | '/chart'
     | '/loan'
     | '/settings'
-    | '/statistics'
     | '/transactions'
     | '/transfer'
     | '/wallets'
@@ -154,7 +142,6 @@ export interface RootRouteChildren {
   ChartRoute: typeof ChartRoute
   LoanRoute: typeof LoanRoute
   SettingsRoute: typeof SettingsRoute
-  StatisticsRoute: typeof StatisticsRoute
   TransactionsRoute: typeof TransactionsRoute
   TransferRoute: typeof TransferRoute
   WalletsRoute: typeof WalletsRoute
@@ -204,13 +191,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/statistics': {
-      id: '/statistics'
-      path: '/statistics'
-      fullPath: '/statistics'
-      preLoaderRoute: typeof StatisticsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/transactions': {
       id: '/transactions'
       path: '/transactions'
@@ -242,7 +222,6 @@ const rootRouteChildren: RootRouteChildren = {
   ChartRoute: ChartRoute,
   LoanRoute: LoanRoute,
   SettingsRoute: SettingsRoute,
-  StatisticsRoute: StatisticsRoute,
   TransactionsRoute: TransactionsRoute,
   TransferRoute: TransferRoute,
   WalletsRoute: WalletsRoute,

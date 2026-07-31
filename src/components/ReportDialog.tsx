@@ -65,69 +65,151 @@ export function ReportDialog({
     const expense = rows.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
 
     const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const left = 40;
+    const right = pageWidth - 40;
     const title =
       type === "income" ? "Income Report" : type === "expense" ? "Expense Report" : "Income & Expense Report";
+    const period = dayjs(to).format("MMM YYYY");
+    const fmtDate = (d: string) => dayjs(d).format("DD MMM YYYY");
+
+    const BLUE: [number, number, number] = [37, 99, 235];
+    const GREEN: [number, number, number] = [22, 163, 74];
+    const RED: [number, number, number] = [220, 38, 38];
+    const DARK: [number, number, number] = [15, 23, 42];
+    const GRAY: [number, number, number] = [107, 114, 128];
+
+    // --- Header (page 1) ---
+    doc.setFillColor(...BLUE);
+    doc.rect(0, 0, pageWidth, 4, "F");
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text("TakaBook", 40, 45);
-    doc.setFontSize(13);
-    doc.text(title, 40, 66);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(110);
-    doc.text(
-      `${dayjs(from).format("DD MMM YYYY")}  -  ${dayjs(to).format("DD MMM YYYY")}`,
-      40,
-      84,
-    );
-    doc.text(`Generated ${dayjs().format("DD MMM YYYY, hh:mm A")}`, 40, 98);
-    doc.setTextColor(0);
+    doc.setFontSize(17);
+    doc.setTextColor(...BLUE);
+    doc.text("Money Mate", left, 44);
 
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...GRAY);
+    doc.text(`${period} Report`, right, 44, { align: "right" });
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(...DARK);
+    doc.text(title, left, 66);
+
+    doc.setFont("helvetica", "normal");``
+    doc.setFontSize(9);
+    doc.setTextColor(...GRAY);
+    doc.text(`${fmtDate(from)} to  ${fmtDate(to)}`, left, 82);
+
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(1);
+    doc.line(left, 92, right, 92);
+
+    // --- Summary stat boxes ---
+    const stats: { label: string; value: string; fill: [number, number, number]; text: [number, number, number] }[] = [
+      { label: "Income", value: num(income), fill: [240, 253, 244], text: GREEN },
+      { label: "Expense", value: num(expense), fill: [254, 242, 242], text: RED },
+      { label: "Balance", value: num(income - expense), fill: [239, 246, 255], text: BLUE },
+      { label: "Records", value: String(rows.length), fill: [245, 245, 245], text: DARK },
+    ];
+    const boxGap = 10;
+    const boxW = (right - left - boxGap * (stats.length - 1)) / stats.length;
+    const boxH = 48;
+    const boxY = 106;
+    stats.forEach((s, i) => {
+      const x = left + i * (boxW + boxGap);
+      doc.setFillColor(...s.fill);
+      doc.roundedRect(x, boxY, boxW, boxH, 6, 6, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(...GRAY);
+      doc.text(s.label.toUpperCase(), x + 10, boxY + 17);
+      doc.setFontSize(13);
+      doc.setTextColor(...s.text);
+      doc.text(s.value, x + 10, boxY + 36);
+    });
+
+    // --- Transactions table ---
+    const colW = [75, 145, 105, 95];
+    const amountW = right - left - colW.reduce((a, b) => a + b, 0);
     autoTable(doc, {
-      startY: 118,
-      head: [["Date", "Title", "Account", "Category", "Type", "Amount (Tk)"]],
+      startY: boxY + boxH + 14,
+      head: [["Date", "Title", "Category", "Account", "Amount"]],
       body: rows.map((t) => [
-        dayjs(t.date).format("DD MMM YYYY"),
+        fmtDate(t.date),
         t.title,
-        b.accountName(t.accountId),
         t.category,
-        t.type === "income" ? "Income" : "Expense",
+        b.accountName(t.accountId),
         `${t.type === "income" ? "+" : "-"}${num(t.amount)}`,
       ]),
-      styles: { fontSize: 9, cellPadding: 5 },
-      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
+      styles: { fontSize: 8.5, cellPadding: 6, textColor: DARK, lineColor: [241, 245, 249], lineWidth: 0.5 },
+      headStyles: { fillColor: BLUE, textColor: 255, fontStyle: "bold", fontSize: 8.5 },
       alternateRowStyles: { fillColor: [248, 250, 252] },
-      columnStyles: { 5: { halign: "right" } },
-      margin: { left: 40, right: 40 },
+      columnStyles: {
+        0: { cellWidth: colW[0], textColor: GRAY },
+        1: { cellWidth: colW[1] },
+        2: { cellWidth: colW[2] },
+        3: { cellWidth: colW[3] },
+        4: { cellWidth: amountW, halign: "right" },
+      },
+      margin: { left, right },
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let y = ((doc as any).lastAutoTable?.finalY ?? 118) + 24;
-    if (y > 740) {
-      doc.addPage();
-      y = 60;
-    }
+    const finalY = ((doc as any).lastAutoTable?.finalY ?? boxY + boxH + 14) + 10;
 
+    // --- Summary block ---
+    const summaryH = 76;
+    const summaryY = Math.min(finalY + 18, pageHeight - 150);
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(left, summaryY, right - left, summaryH, 6, 6, "FD");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("Summary", 40, y);
-    doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    let line = y + 18;
-    doc.text(`Total records: ${rows.length}`, 40, line);
+    doc.setTextColor(...DARK);
+    doc.text("SUMMARY", left + 14, summaryY + 20);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    let sy = summaryY + 40;
     if (type !== "expense") {
-      line += 15;
-      doc.text(`Total income: Tk ${num(income)}`, 40, line);
+      doc.setTextColor(...DARK);
+      doc.text("Total Income", left + 14, sy);
+      doc.setTextColor(...GREEN);
+      doc.text(`Tk ${num(income)}`, right - 14, sy, { align: "right" });
+      sy += 16;
     }
     if (type !== "income") {
-      line += 15;
-      doc.text(`Total expense: Tk ${num(expense)}`, 40, line);
+      doc.setTextColor(...DARK);
+      doc.text("Total Expense", left + 14, sy);
+      doc.setTextColor(...RED);
+      doc.text(`Tk ${num(expense)}`, right - 14, sy, { align: "right" });
+      sy += 16;
     }
     if (type === "both") {
-      line += 15;
       doc.setFont("helvetica", "bold");
-      doc.text(`Net balance: Tk ${num(income - expense)}`, 40, line);
+      doc.setTextColor(...DARK);
+      doc.text("Net Balance", left + 14, sy);
+      doc.setTextColor(...BLUE);
+      doc.text(`Tk ${num(income - expense)}`, right - 14, sy, { align: "right" });
+    }
+
+    // --- Footer on every page ---
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.line(left, pageHeight - 34, right, pageHeight - 34);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...GRAY);
+      doc.text(`Generated by TakaBook • ${dayjs().format("DD MMM YYYY, hh:mm A")}`, left, pageHeight - 20);
+      doc.text(`Page ${i} of ${pageCount}`, right, pageHeight - 20, { align: "right" });
     }
 
     doc.save(`takabook-${type}-report-${from}-to-${to}.pdf`);

@@ -6,6 +6,7 @@ import isSameOrBefore from "dayjs/plugin/isSameOrBefore";
 import { Pencil, Trash2, Search, Receipt, Plus, ArrowUpDown, FileDown } from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
 import { TransactionDialog } from "@/components/TransactionDialog";
+import { ReportDialog } from "@/components/ReportDialog";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
 import { AccountIcon } from "@/components/AccountIcon";
@@ -276,6 +277,8 @@ function TransactionsPage() {
       </Panel>
 
       <TransactionDialog open={open} onOpenChange={setOpen} transaction={editing} />
+
+      <ReportDialog open={reportOpen} onOpenChange={setReportOpen} />
 
       <CustomRangeDialog
         open={customRangeOpen}

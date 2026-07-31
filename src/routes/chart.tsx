@@ -9,6 +9,9 @@ import {
   BarChart3,
   Percent,
   Layers,
+  Flame,
+  CalendarClock,
+  CreditCard,
 } from "lucide-react";
 import {
   AreaChart,
@@ -91,10 +94,18 @@ function ChartPage() {
     });
   }, [transactions, range]);
 
-  // Daily trend for past 14 days
+  // Daily trend based on selected range
+  const dayCount = useMemo(() => {
+    if (range === "this_month") return dayjs().date();
+    if (range === "3_months") return 90;
+    if (range === "6_months") return 180;
+    if (range === "this_year") return dayjs().diff(dayjs().startOf("year"), "day") + 1;
+    return 14;
+  }, [range]);
+
   const dailyData = useMemo(() => {
-    return Array.from({ length: 14 }, (_, i) => {
-      const d = dayjs().subtract(13 - i, "day");
+    return Array.from({ length: dayCount }, (_, i) => {
+      const d = dayjs().subtract(dayCount - 1 - i, "day");
       const txs = transactions.filter((t) => dayjs(t.date).isSame(d, "day"));
       return {
         date: d.format("DD MMM"),
@@ -102,12 +113,18 @@ function ChartPage() {
         Expense: sumBy(txs, "expense"),
       };
     });
-  }, [transactions]);
+  }, [transactions, dayCount]);
 
   // Expense by Category
   const categoryData = useMemo(() => {
     const expenses = filteredTxs.filter((t) => t.type === "expense");
     return groupByCategory(expenses);
+  }, [filteredTxs]);
+
+  // Income by Category
+  const incomeData = useMemo(() => {
+    const incomes = filteredTxs.filter((t) => t.type === "income");
+    return groupByCategory(incomes);
   }, [filteredTxs]);
 
   // Account Distribution
@@ -116,6 +133,31 @@ function ChartPage() {
       .map((a) => ({ name: a.name, value: Math.max(b.balances.get(a.id) ?? 0, 0), color: a.color }))
       .filter((d) => d.value > 0);
   }, [accounts, b]);
+
+  // Weekly spending (last 7 days)
+  const weeklyData = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) => {
+        const d = dayjs().subtract(6 - i, "day");
+        const txs = transactions.filter((t) => dayjs(t.date).isSame(d, "day"));
+        return { day: d.format("ddd"), Spent: sumBy(txs, "expense") };
+      }),
+    [transactions],
+  );
+
+  const insights = useMemo(() => {
+    const expenses = transactions.filter((t) => t.type === "expense");
+    const days = new Set(expenses.map((t) => t.date)).size || 1;
+    const accountUse = new Map<string, number>();
+    for (const t of transactions) accountUse.set(t.accountId, (accountUse.get(t.accountId) ?? 0) + 1);
+    const mostUsed = [...accountUse.entries()].sort((a, c) => c[1] - a[1])[0];
+    return {
+      topCategory: categoryData[0]?.name ?? "—",
+      topCategoryAmount: categoryData[0]?.value ?? 0,
+      avgDaily: expenses.reduce((s, t) => s + t.amount, 0) / days,
+      mostUsedAccount: mostUsed ? b.accountName(mostUsed[0]) : "—",
+    };
+  }, [transactions, categoryData, b]);
 
   const hasData = transactions.length > 0;
 
@@ -167,6 +209,12 @@ function ChartPage() {
         <StatCard label="Total Expense" value={b.money(totalExpense)} icon={TrendingDown} tone="danger" />
         <StatCard label="Net Savings" value={b.money(netSavings)} icon={PiggyBank} tone={netSavings >= 0 ? "primary" : "danger"} />
         <StatCard label="Savings Rate" value={`${savingsRate}%`} icon={Percent} tone={savingsRate >= 20 ? "success" : "warning"} hint="Target > 20%" />
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:mt-4 sm:grid-cols-3">
+        <StatCard label="Highest expense category" value={insights.topCategory} hint={b.money(insights.topCategoryAmount)} icon={Flame} tone="danger" />
+        <StatCard label="Average daily spending" value={b.money(insights.avgDaily || 0)} icon={CalendarClock} tone="warning" />
+        <StatCard label="Most used account" value={insights.mostUsedAccount} icon={CreditCard} tone="primary" />
       </div>
 
       {!hasData ? (
@@ -223,8 +271,29 @@ function ChartPage() {
             )}
           </Panel>
 
-          {/* Daily 14-Day Trend Bar Chart */}
-          <Panel title="Recent Daily Trend (Last 14 Days)">
+          {/* Income Category Breakdown Pie Chart */}
+          <Panel title="Income by Category">
+            {incomeData.length ? (
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={incomeData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={100} paddingAngle={3}>
+                      {incomeData.map((_, i) => (
+                        <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => b.money(v)} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyState icon={PieChartIcon} title="No income recorded for this period" />
+            )}
+          </Panel>
+
+          {/* Daily Trend Bar Chart */}
+          <Panel title={`Daily Trend (${dayCount === 14 ? "Last 14 Days" : range === "this_year" ? "This Year" : `Last ${dayCount} Days`})`}>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dailyData}>
@@ -235,6 +304,21 @@ function ChartPage() {
                   <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="Income" fill="#16A34A" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="Expense" fill="#DC2626" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Panel>
+
+          {/* Weekly Spending */}
+          <Panel title="Weekly Spending">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={weeklyData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                  <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={12} />
+                  <YAxis tickLine={false} axisLine={false} fontSize={12} width={48} />
+                  <Tooltip formatter={(v: number) => b.money(v)} />
+                  <Bar dataKey="Spent" fill="#2563EB" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

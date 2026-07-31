@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Wallet } from "lucide-react";
+import { Plus, Pencil, Trash2, Wallet, CircleDollarSign } from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
-import { PageHeader, Panel } from "@/components/ui-kit";
+import { PageHeader, Panel, StatCard } from "@/components/ui-kit";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
 import { ACCOUNT_COLORS, ACCOUNT_ICONS } from "@/constants";
@@ -97,7 +97,11 @@ function WalletsPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <StatCard label="Total Balance" value={b.money(b.total)} icon={CircleDollarSign} tone="primary" hint={`${accounts.length} account${accounts.length === 1 ? "" : "s"}`} />
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {accounts.map((a) => {
           return (
             <div key={a.id} className="card-surface animate-rise overflow-hidden p-5">

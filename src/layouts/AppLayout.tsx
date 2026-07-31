@@ -25,7 +25,6 @@ const NAV = [
   { to: "/transfer", label: "Transfer", icon: ArrowLeftRight },
   { to: "/loan", label: "Loans", icon: Banknote },
   { to: "/chart", label: "Charts", icon: BarChart3 },
-  { to: "/statistics", label: "Statistics", icon: PieChart },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ] as const;
@@ -95,19 +94,21 @@ export function AppLayout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-card/90 px-4 py-3 backdrop-blur lg:hidden">
         <Brand />
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setOpen(true)}
-            aria-label="Add transaction"
-            className="rounded-xl bg-primary p-2.5 text-primary-foreground shadow-card"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+          {pathname === "/" && (
+            <button
+              onClick={() => setOpen(true)}
+              aria-label="Add transaction"
+              className="rounded-xl bg-primary p-2.5 text-primary-foreground shadow-card"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={signOut}
             aria-label="Sign out"
-            className="rounded-xl border border-border p-2.5 text-muted-foreground transition-colors hover:text-danger"
+            className="grid h-9 w-9 place-items-center rounded-xl border border-border bg-primary-soft text-xs font-bold uppercase text-primary transition-colors hover:text-danger"
           >
-            <LogOut className="h-4 w-4" />
+            {user.name.slice(0, 1)}
           </button>
         </div>
       </header>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFinance } from "@/context/FinanceContext";
+import { useBalances } from "@/hooks/useBalances";
 import { cn } from "@/lib/utils";
 import type { Loan, LoanDirection } from "@/types";
 import { LOAN_TYPES } from "./utils";
@@ -13,6 +14,7 @@ import { toast } from "sonner";
 
 export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; onOpenChange: (v: boolean) => void; loan?: Loan }) {
   const { accounts, addLoan, updateLoan } = useFinance();
+  const b = useBalances();
   const today = new Date().toISOString().slice(0, 10);
 
   const [form, setForm] = useState({
@@ -24,6 +26,10 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
     loanDate: loan?.loanDate ?? today,
     dueDate: loan?.dueDate ?? "",
   });
+
+  const amt = parseFloat(form.totalAmount) || 0;
+  const existingCredit = loan && loan.direction === "receivable" && loan.accountId === form.accountId ? loan.totalAmount : 0;
+  const selectedBalance = (b.balances.get(form.accountId) ?? 0) + existingCredit;
 
   const handleOpen = (v: boolean) => {
     if (v) {
@@ -46,6 +52,14 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
     const amt = parseFloat(form.totalAmount);
     if (!amt || amt <= 0) { toast.error("Enter a valid loan amount"); return; }
     if (!form.accountId) { toast.error("Select an account"); return; }
+
+    if (form.direction === "receivable") {
+      if (selectedBalance < amt) {
+        const accName = accounts.find((a) => a.id === form.accountId)?.name ?? "wallet";
+        toast.error(`Insufficient balance in ${accName} (${b.money(selectedBalance)})`);
+        return;
+      }
+    }
 
     const payload = {
       contactName: form.contactName.trim(),
@@ -98,8 +112,14 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase text-muted-foreground">Account *</Label>
             <select value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-              {accounts.map((a) => (<option key={a.id} value={a.id}>{a.name}</option>))}
+              {accounts.map((a) => (<option key={a.id} value={a.id}>{a.name} — {b.money(b.balances.get(a.id) ?? 0)}</option>))}
             </select>
+            {form.direction === "receivable" && (
+              <p className={cn("text-xs", selectedBalance >= amt || amt <= 0 ? "text-muted-foreground" : "font-semibold text-danger")}>
+                Wallet balance: {b.money(selectedBalance)}
+                {selectedBalance < amt && amt > 0 && <> — insufficient for this loan</>}
+              </p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase text-muted-foreground">Loan Category</Label>
