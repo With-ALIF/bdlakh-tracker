@@ -47,7 +47,7 @@ export const Route = createFileRoute("/chart")({
   component: ChartPage,
 });
 
-type TimeRange = "this_month" | "3_months" | "6_months" | "this_year";
+type TimeRange = "today" | "this_week" | "15_days" | "this_month" | "3_months" | "6_months" | "this_year";
 
 function ChartPage() {
   const { transactions, accounts } = useFinance();
@@ -59,6 +59,9 @@ function ChartPage() {
     const now = dayjs();
     return transactions.filter((t) => {
       const d = dayjs(t.date);
+      if (range === "today") return d.isSame(now, "day");
+      if (range === "this_week") return d.isSame(now, "week");
+      if (range === "15_days") return d.isAfter(now.subtract(15, "day"));
       if (range === "this_month") return d.isSame(now, "month");
       if (range === "3_months") return d.isAfter(now.subtract(3, "month"));
       if (range === "6_months") return d.isAfter(now.subtract(6, "month"));
@@ -75,7 +78,8 @@ function ChartPage() {
   // Monthly / Period chart data
   const chartData = useMemo(() => {
     let monthCount = 6;
-    if (range === "this_month") monthCount = 1;
+    if (range === "today" || range === "this_week" || range === "15_days") monthCount = 1;
+    else if (range === "this_month") monthCount = 1;
     else if (range === "3_months") monthCount = 3;
     else if (range === "6_months") monthCount = 6;
     else if (range === "this_year") monthCount = dayjs().month() + 1;
@@ -96,6 +100,9 @@ function ChartPage() {
 
   // Daily trend based on selected range
   const dayCount = useMemo(() => {
+    if (range === "today") return 1;
+    if (range === "this_week") return dayjs().day() + 1;
+    if (range === "15_days") return 15;
     if (range === "this_month") return dayjs().date();
     if (range === "3_months") return 90;
     if (range === "6_months") return 180;
@@ -167,39 +174,80 @@ function ChartPage() {
         title="Charts & Analytics"
         subtitle="Visualise income, expense patterns and net balance trends"
         action={
-          <div className="flex items-center gap-1.5 rounded-xl border border-border bg-card p-1 text-xs">
-            <button
-              onClick={() => setRange("this_month")}
-              className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                range === "this_month" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
+          <div>
+            {/* Mobile dropdown */}
+            <select
+              value={range}
+              onChange={(e) => setRange(e.target.value as TimeRange)}
+              className="h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium lg:hidden"
             >
-              This Month
-            </button>
-            <button
-              onClick={() => setRange("3_months")}
-              className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                range === "3_months" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              3 Months
-            </button>
-            <button
-              onClick={() => setRange("6_months")}
-              className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                range === "6_months" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              6 Months
-            </button>
-            <button
-              onClick={() => setRange("this_year")}
-              className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                range === "this_year" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              This Year
-            </button>
+              <option value="today">Today</option>
+              <option value="this_week">This Week</option>
+              <option value="15_days">15 Days</option>
+              <option value="this_month">This Month</option>
+              <option value="3_months">3 Months</option>
+              <option value="6_months">6 Months</option>
+              <option value="this_year">This Year</option>
+            </select>
+            {/* Desktop buttons */}
+            <div className="hidden items-center gap-1.5 rounded-xl border border-border bg-card p-1 text-xs lg:flex">
+              <button
+                onClick={() => setRange("today")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "today" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Today
+              </button>
+              <button
+                onClick={() => setRange("this_week")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "this_week" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                This Week
+              </button>
+              <button
+                onClick={() => setRange("15_days")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "15_days" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                15 Days
+              </button>
+              <button
+                onClick={() => setRange("this_month")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "this_month" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                This Month
+              </button>
+              <button
+                onClick={() => setRange("3_months")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "3_months" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                3 Months
+              </button>
+              <button
+                onClick={() => setRange("6_months")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "6_months" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                6 Months
+              </button>
+              <button
+                onClick={() => setRange("this_year")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "this_year" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                This Year
+              </button>
+            </div>
           </div>
         }
       />

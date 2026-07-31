@@ -1,11 +1,8 @@
 import { useState } from "react";
 import {
-  ArrowLeft, Pencil, MoreVertical, Phone, Info, FileText, Trash2, Banknote, Plus, CheckCircle2,
+  ArrowLeft, Pencil, Phone, Info, FileText, Trash2, Banknote, Plus, CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -14,7 +11,7 @@ import { useFinance } from "@/context/FinanceContext";
 import { cn } from "@/lib/utils";
 import type { Loan } from "@/types";
 import {
-  fmt, fmtDate, paidAmount, remainingAmount, progressPct, DIR_CONFIG, STATUS_CONFIG,
+  fmt, fmtDate, paidAmount, remainingAmount, progressPct, DIR_CONFIG, STATUS_CONFIG, dirLabel,
 } from "./utils";
 import { toast } from "sonner";
 import { PaymentDialog, IncreaseDialog, LoanFormDialog } from "./dialogs";
@@ -25,7 +22,6 @@ export function LoanDetail({ loan, onBack }: { loan: Loan; onBack: () => void })
   const [payOpen, setPayOpen] = useState(false);
   const [incOpen, setIncOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const account = accounts.find((a) => a.id === loan.accountId);
@@ -72,27 +68,6 @@ export function LoanDetail({ loan, onBack }: { loan: Loan; onBack: () => void })
         <button onClick={onBack} className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" /> Back
         </button>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
-            <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
-          </Button>
-          <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline"><MoreVertical className="h-4 w-4" /></Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => { updateLoan(loan.id, { status: "overdue" }); toast.success("Marked as overdue"); setMoreOpen(false); }}>
-                Mark as Overdue
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { updateLoan(loan.id, { status: "completed" }); toast.success("Marked as completed"); setMoreOpen(false); }}>
-                Mark as Completed
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive" onClick={() => { setMoreOpen(false); setConfirmDelete(true); }}>
-                Delete Loan
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
       </div>
 
       {/* Contact hero */}
@@ -109,7 +84,7 @@ export function LoanDetail({ loan, onBack }: { loan: Loan; onBack: () => void })
             </p>
           )}
           <span className={cn("mt-2 rounded-full px-3 py-1 text-xs font-semibold", dir.color)}>
-            {dir.label}
+            {dirLabel(loan.direction, loan.status)}
           </span>
         </div>
       </div>

@@ -1,21 +1,11 @@
-import { useState } from "react";
 import {
-  Phone, MoreVertical, ChevronRight, CheckCircle2, Clock, XCircle, Calendar, Badge, AlertCircle,
+  Phone, ChevronRight, CheckCircle2, Clock, XCircle, Calendar, Badge, AlertCircle,
 } from "lucide-react";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { useFinance } from "@/context/FinanceContext";
 import { cn } from "@/lib/utils";
 import type { Loan } from "@/types";
 import {
-  fmt, fmtDate, paidAmount, remainingAmount, progressPct, DIR_CONFIG, STATUS_CONFIG,
+  fmt, fmtDate, paidAmount, remainingAmount, progressPct, DIR_CONFIG, STATUS_CONFIG, dirLabel,
 } from "./utils";
-import { toast } from "sonner";
 
 export function DueDateStatus({ loan }: { loan: Loan }) {
   if (loan.status === "completed") {
@@ -93,8 +83,6 @@ function DueDateFooter({ loan }: { loan: Loan }) {
 }
 
 export function LoanCard({ loan, onSelect }: { loan: Loan; onSelect: () => void }) {
-  const { deleteLoan } = useFinance();
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const pct = progressPct(loan);
   const dir = DIR_CONFIG[loan.direction];
   const stat = STATUS_CONFIG[loan.status];
@@ -103,9 +91,8 @@ export function LoanCard({ loan, onSelect }: { loan: Loan; onSelect: () => void 
   const paid = paidAmount(loan);
 
   return (
-    <>
-      <div className="card-surface animate-rise overflow-hidden">
-        <div className="h-1 w-full" style={{ background: loan.direction === "receivable" ? "linear-gradient(to right,#10b981,#059669)" : "linear-gradient(to right,#f43f5e,#e11d48)" }} />
+    <div className="card-surface animate-rise overflow-hidden">
+      <div className="h-1 w-full" style={{ background: loan.direction === "receivable" ? "linear-gradient(to right,#10b981,#059669)" : "linear-gradient(to right,#f43f5e,#e11d48)" }} />
         <div className="p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -113,14 +100,7 @@ export function LoanCard({ loan, onSelect }: { loan: Loan; onSelect: () => void 
               {loan.contactPhone && <p className="flex items-center gap-1 text-xs text-muted-foreground"><Phone className="h-3 w-3" /> {loan.contactPhone}</p>}
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-semibold", dir.color)}>{dir.label}</span>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild><button className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><MoreVertical className="h-4 w-4" /></button></DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={onSelect}>View Details</DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive" onClick={() => setConfirmDelete(true)}>Delete</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-semibold", dir.color)}>{dirLabel(loan.direction, loan.status)}</span>
             </div>
           </div>
           <div className="mt-2"><DueDateStatus loan={loan} /></div>
@@ -142,19 +122,12 @@ export function LoanCard({ loan, onSelect }: { loan: Loan; onSelect: () => void 
                   {loan.payments.length > 0 && <><span>•</span><span>Paid on {fmtDate(loan.payments[loan.payments.length - 1].date)}</span></>}
                 </div>
               ) : (
-                <div className="flex flex-wrap items-center gap-1.5"><span className={cn("rounded-full px-2.5 py-0.5 font-semibold", dir.color)}>{dir.label}</span><span>•</span><span>{loan.loanType}</span><DueDateFooter loan={loan} /></div>
+                <div className="flex flex-wrap items-center gap-1.5"><span className={cn("rounded-full px-2.5 py-0.5 font-semibold", dir.color)}>{dirLabel(loan.direction, loan.status)}</span><span>•</span><span>{loan.loanType}</span><DueDateFooter loan={loan} /></div>
               )}
             </div>
             <button onClick={onSelect} className="flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline">{loan.status === "completed" ? "View History" : "View Details"}<ChevronRight className="h-3 w-3" /></button>
-          </div>
         </div>
       </div>
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Delete this loan?</AlertDialogTitle><AlertDialogDescription>All payment history for "{loan.contactName}" will be permanently deleted.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { deleteLoan(loan.id); toast.success("Loan deleted"); }}>Delete</AlertDialogAction></AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+    </div>
   );
 }

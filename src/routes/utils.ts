@@ -45,3 +45,10 @@ export const DIR_CONFIG: Record<LoanDirection, { label: string; color: string }>
   receivable: { label: "Receiving", color: "text-emerald-500 bg-emerald-500/10" },
   payable: { label: "Payable", color: "text-rose-500 bg-rose-500/10" },
 };
+
+export function dirLabel(direction: LoanDirection, status: LoanStatus): string {
+  if (status === "completed") {
+    return direction === "receivable" ? "Received" : "Paid";
+  }
+  return direction === "receivable" ? "Receiving" : "Payable";
+}
