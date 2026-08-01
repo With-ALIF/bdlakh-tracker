@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { ArrowLeftRight, ArrowRight, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -85,12 +85,21 @@ function TransferPage() {
   const b = useBalances();
 
   const [form, setForm] = useState({
-    fromAccountId: accounts[0]?.id ?? "cash",
-    toAccountId: accounts[1]?.id ?? "bkash",
+    fromAccountId: accounts[0]?.id ?? "",
+    toAccountId: accounts[1]?.id ?? accounts[0]?.id ?? "",
     amount: "",
     date: dayjs().format("YYYY-MM-DD"),
-    note: "",
   });
+
+  useEffect(() => {
+    if (accounts.length > 0) {
+      setForm((prev) => ({
+        ...prev,
+        fromAccountId: prev.fromAccountId || accounts[0]?.id || "",
+        toAccountId: prev.toAccountId || accounts[1]?.id || accounts[0]?.id || "",
+      }));
+    }
+  }, [accounts]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -115,7 +124,6 @@ function TransferPage() {
       toAccountId: form.toAccountId,
       amount,
       date: form.date,
-      note: form.note,
     });
 
     if (hasCharge && charge > 0) {
@@ -126,11 +134,10 @@ function TransferPage() {
         accountId: form.fromAccountId,
         category: "Transfer Charge",
         title: `Cash Out Charge from ${b.accountName(form.fromAccountId)}`,
-        note: `Fee for transferring ${b.money(amount)}`,
       });
     }
 
-    setForm({ ...form, amount: "", note: "" });
+    setForm({ ...form, amount: "" });
     toast.success("Transfer saved");
     setIsSubmitting(false);
     setConfirmOpen(false);
@@ -271,7 +278,6 @@ function TransferPage() {
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
                       {dayjs(t.date).format("DD MMM YYYY")}
-                      {t.note ? ` · ${t.note}` : ""}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">

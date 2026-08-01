@@ -77,16 +77,38 @@ function ChartPage() {
 
   // Monthly / Period chart data
   const chartData = useMemo(() => {
-    let monthCount = 6;
-    if (range === "today" || range === "this_week" || range === "15_days") monthCount = 1;
-    else if (range === "this_month") monthCount = 1;
-    else if (range === "3_months") monthCount = 3;
+    if (range === "today") {
+      const d = dayjs();
+      const txs = filteredTxs;
+      return [{ month: d.format("DD MMM"), Income: sumBy(txs, "income"), Expense: sumBy(txs, "expense"), Net: sumBy(txs, "income") - sumBy(txs, "expense") }];
+    }
+    if (range === "this_week") {
+      return Array.from({ length: 7 }, (_, i) => {
+        const d = dayjs().startOf("week").add(i, "day");
+        const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(d, "day"));
+        const inc = sumBy(txs, "income");
+        const exp = sumBy(txs, "expense");
+        return { month: d.format("ddd"), Income: inc, Expense: exp, Net: inc - exp };
+      });
+    }
+    if (range === "15_days") {
+      return Array.from({ length: 15 }, (_, i) => {
+        const d = dayjs().subtract(14 - i, "day");
+        const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(d, "day"));
+        const inc = sumBy(txs, "income");
+        const exp = sumBy(txs, "expense");
+        return { month: d.format("DD MMM"), Income: inc, Expense: exp, Net: inc - exp };
+      });
+    }
+
+    let monthCount = 1;
+    if (range === "3_months") monthCount = 3;
     else if (range === "6_months") monthCount = 6;
     else if (range === "this_year") monthCount = dayjs().month() + 1;
 
     return Array.from({ length: monthCount }, (_, i) => {
       const m = dayjs().subtract(monthCount - 1 - i, "month");
-      const txs = transactions.filter((t) => dayjs(t.date).isSame(m, "month"));
+      const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(m, "month"));
       const inc = sumBy(txs, "income");
       const exp = sumBy(txs, "expense");
       return {
@@ -96,7 +118,7 @@ function ChartPage() {
         Net: inc - exp,
       };
     });
-  }, [transactions, range]);
+  }, [filteredTxs, range]);
 
   // Daily trend based on selected range
   const dayCount = useMemo(() => {
@@ -141,16 +163,29 @@ function ChartPage() {
       .filter((d) => d.value > 0);
   }, [accounts, b]);
 
-  // Weekly spending (last 7 days)
-  const weeklyData = useMemo(
-    () =>
-      Array.from({ length: 7 }, (_, i) => {
-        const d = dayjs().subtract(6 - i, "day");
-        const txs = transactions.filter((t) => dayjs(t.date).isSame(d, "day"));
-        return { day: d.format("ddd"), Spent: sumBy(txs, "expense") };
-      }),
-    [transactions],
-  );
+  // Weekly spending based on selected range
+  const weeklyData = useMemo(() => {
+    const now = dayjs();
+    let days: number;
+    if (range === "today") days = 1;
+    else if (range === "this_week") days = 7;
+    else if (range === "15_days") days = 15;
+    else if (range === "this_month") days = now.daysInMonth();
+    else if (range === "3_months") days = 90;
+    else if (range === "6_months") days = 180;
+    else if (range === "this_year") return Array.from({ length: now.month() + 1 }, (_, i) => {
+      const m = now.startOf("year").add(i, "month");
+      const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(m, "month"));
+      return { day: m.format("MMM"), Spent: sumBy(txs, "expense") };
+    });
+    else days = 7;
+
+    return Array.from({ length: days }, (_, i) => {
+      const d = now.subtract(days - 1 - i, "day");
+      const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(d, "day"));
+      return { day: days <= 31 ? d.format("DD MMM") : d.format("MMM DD"), Spent: sumBy(txs, "expense") };
+    });
+  }, [filteredTxs, range]);
 
   const insights = useMemo(() => {
     const expenses = transactions.filter((t) => t.type === "expense");
@@ -272,7 +307,7 @@ function ChartPage() {
       ) : (
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {/* Income vs Expense Area Chart */}
-          <Panel title="Income vs Expense Overview">
+          <Panel title={`Income vs Expense (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
@@ -341,7 +376,7 @@ function ChartPage() {
           </Panel>
 
           {/* Daily Trend Bar Chart */}
-          <Panel title={`Daily Trend (${dayCount === 14 ? "Last 14 Days" : range === "this_year" ? "This Year" : `Last ${dayCount} Days`})`}>
+          <Panel title={`Daily Trend (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dailyData}>
@@ -358,7 +393,7 @@ function ChartPage() {
           </Panel>
 
           {/* Weekly Spending */}
-          <Panel title="Weekly Spending">
+          <Panel title={`Spending (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={weeklyData}>

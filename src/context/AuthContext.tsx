@@ -1,17 +1,16 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { supabase } from "@/lib/supabase";
+import type { User } from "@supabase/supabase-js";
 
-/** Local-only account record persisted in localStorage. */
-export type LocalUser = {
+type UserProfile = {
   name: string;
   email: string;
-  /** Hashed password — never store plaintext, even locally. */
-  passwordHash: string;
   createdAt: string;
 };
 
 type AuthState = {
   ready: boolean;
-  user: Omit<LocalUser, "passwordHash"> | null;
+  user: UserProfile | null;
   hasAccount: boolean;
   signUp: (input: { name: string; email: string; password: string }) => Promise<void>;
   signIn: (input: { email: string; password: string }) => Promise<void>;
@@ -19,81 +18,59 @@ type AuthState = {
   resetAccount: () => void;
 };
 
-const USER_KEY = "moneymate.auth.user";
-const SESSION_KEY = "moneymate.auth.session";
-
 const AuthContext = createContext<AuthState | null>(null);
 
-async function hashPassword(password: string) {
-  const data = new TextEncoder().encode(`moneymate::${password}`);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function readUser(): LocalUser | null {
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as LocalUser) : null;
-  } catch {
-    return null;
-  }
+function mapUser(user: User | null): UserProfile | null {
+  if (!user) return null;
+  return {
+    name: user.user_metadata?.full_name ?? "",
+    email: user.email ?? "",
+    createdAt: user.created_at,
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
-  const [account, setAccount] = useState<LocalUser | null>(null);
-  const [signedIn, setSignedIn] = useState(false);
+  const [user, setUser] = useState<UserProfile | null>(null);
 
-  // Hydrate after mount so SSR and the client render the same initial markup.
   useEffect(() => {
-    const stored = readUser();
-    setAccount(stored);
-    setSignedIn(Boolean(stored) && localStorage.getItem(SESSION_KEY) === "active");
-    setReady(true);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(mapUser(session?.user ?? null));
+      setReady(true);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(mapUser(session?.user ?? null));
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const value = useMemo<AuthState>(() => {
-    return {
-      ready,
-      hasAccount: Boolean(account),
-      user: signedIn && account ? { name: account.name, email: account.email, createdAt: account.createdAt } : null,
-      async signUp({ name, email, password }) {
-        const record: LocalUser = {
-          name: name.trim(),
-          email: email.trim().toLowerCase(),
-          passwordHash: await hashPassword(password),
-          createdAt: new Date().toISOString(),
-        };
-        localStorage.setItem(USER_KEY, JSON.stringify(record));
-        localStorage.setItem(SESSION_KEY, "active");
-        setAccount(record);
-        setSignedIn(true);
-      },
-      async signIn({ email, password }) {
-        const stored = readUser();
-        if (!stored) throw new Error("No account found on this device. Please sign up first.");
-        const hash = await hashPassword(password);
-        if (stored.email !== email.trim().toLowerCase() || stored.passwordHash !== hash) {
-          throw new Error("Incorrect email or password.");
-        }
-        localStorage.setItem(SESSION_KEY, "active");
-        setAccount(stored);
-        setSignedIn(true);
-      },
-      signOut() {
-        localStorage.removeItem(SESSION_KEY);
-        setSignedIn(false);
-      },
-      resetAccount() {
-        localStorage.removeItem(USER_KEY);
-        localStorage.removeItem(SESSION_KEY);
-        setAccount(null);
-        setSignedIn(false);
-      },
-    };
-  }, [ready, account, signedIn]);
+  const value = useMemo<AuthState>(() => ({
+    ready,
+    user,
+    hasAccount: true,
+    async signUp({ name, email, password }) {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: name } },
+      });
+      if (error) throw error;
+    },
+    async signIn({ email, password }) {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+    },
+    async signOut() {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    },
+    async resetAccount() {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    },
+  }), [ready, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

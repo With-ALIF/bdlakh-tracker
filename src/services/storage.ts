@@ -1,5 +1,7 @@
 import type { AppData } from "@/types";
-import { DEFAULT_ACCOUNTS, DEFAULT_SETTINGS, STORAGE_KEY } from "@/constants";
+import { DEFAULT_ACCOUNTS } from "@/constants";
+
+const STORAGE_KEY = "bd-finance-tracker-v1";
 
 /** Local-storage backed persistence layer (no backend). */
 
@@ -7,9 +9,7 @@ export const emptyData = (): AppData => ({
   accounts: DEFAULT_ACCOUNTS.map((a) => ({ ...a })),
   transactions: [],
   transfers: [],
-  budgets: [],
   loans: [],
-  settings: { ...DEFAULT_SETTINGS },
 });
 
 export function loadData(): AppData {
@@ -29,9 +29,7 @@ export function loadData(): AppData {
         : base.accounts,
       transactions: parsed.transactions ?? [],
       transfers: parsed.transfers ?? [],
-      budgets: parsed.budgets ?? [],
       loans: parsed.loans ?? [],
-      settings: { ...base.settings, ...(parsed.settings ?? {}) },
     };
   } catch (err) {
     console.error("Failed to read saved data", err);

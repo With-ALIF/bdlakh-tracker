@@ -48,7 +48,7 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
       title: "",
       amount: "" as unknown as number,
       type: "expense",
-      accountId: accounts[0]?.id ?? "cash",
+      accountId: accounts[0]?.id ?? "",
       category: "Food",
       date: dayjs().format("YYYY-MM-DD"),
     },
@@ -59,6 +59,7 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
 
   useEffect(() => {
     if (!open) return;
+    const defaultAccId = accounts[0]?.id ?? "";
     form.reset(
       transaction
         ? { ...transaction }
@@ -66,13 +67,12 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
             title: "",
             amount: "" as unknown as number,
             type: "expense",
-            accountId: accounts[0]?.id ?? "cash",
+            accountId: defaultAccId,
             category: "Food",
             date: dayjs().format("YYYY-MM-DD"),
           },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, transaction]);
+  }, [open, transaction, accounts]);
 
   const onSubmit = form.handleSubmit((raw) => {
     const values = schema.parse(raw);

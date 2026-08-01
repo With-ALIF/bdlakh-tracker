@@ -1,5 +1,5 @@
 import {
-  Phone, ChevronRight, CheckCircle2, Clock, XCircle, Calendar, Badge, AlertCircle,
+  ChevronRight, CheckCircle2, Clock, XCircle, Calendar, Badge, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Loan } from "@/types";
@@ -97,7 +97,7 @@ export function LoanCard({ loan, onSelect }: { loan: Loan; onSelect: () => void 
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="truncate font-bold">{loan.contactName}</p>
-              {loan.contactPhone && <p className="flex items-center gap-1 text-xs text-muted-foreground"><Phone className="h-3 w-3" /> {loan.contactPhone}</p>}
+
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-semibold", dir.color)}>{dirLabel(loan.direction, loan.status)}</span>

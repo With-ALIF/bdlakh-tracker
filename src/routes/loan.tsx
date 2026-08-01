@@ -50,7 +50,7 @@ function LoanPage() {
     let list = loans;
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter((l) => l.contactName.toLowerCase().includes(q) || l.contactPhone?.includes(q));
+      list = list.filter((l) => l.contactName.toLowerCase().includes(q));
     }
     if (filter === "receivable" || filter === "payable") list = list.filter((l) => l.direction === filter);
     else if (filter === "active" || filter === "completed" || filter === "overdue") list = list.filter((l) => l.status === filter);

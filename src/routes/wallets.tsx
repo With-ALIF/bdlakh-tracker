@@ -54,18 +54,19 @@ function WalletsPage() {
     name: "",
     icon: "wallet",
     color: ACCOUNT_COLORS[0],
+    type: "other",
     openingBalance: 0,
   });
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: "", icon: "wallet", color: ACCOUNT_COLORS[0], openingBalance: 0 });
+    setForm({ name: "", icon: "wallet", color: ACCOUNT_COLORS[0], type: "other", openingBalance: 0 });
     setOpen(true);
   };
 
   const openEdit = (a: Account) => {
     setEditing(a);
-    setForm({ name: a.name, icon: a.icon, color: a.color, openingBalance: a.openingBalance });
+    setForm({ name: a.name, icon: a.icon, color: a.color, type: a.type, openingBalance: a.openingBalance });
     setOpen(true);
   };
 

@@ -10,7 +10,6 @@ import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
 import { downloadFile, toCSV } from "@/utils/finance";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import type { AppData } from "@/types";
 import {
   AlertDialog,
@@ -39,12 +38,12 @@ export const Route = createFileRoute("/settings")({
 function SettingsPage() {
   const finance = useFinance();
   const { signOut } = useAuth();
-  const { accounts, transactions, transfers, budgets, settings, updateSettings, replaceAll, resetAll } = finance;
+  const { accounts, transactions, transfers, replaceAll, resetAll } = finance;
   const b = useBalances();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const exportJSON = () => {
-    const data: AppData = { accounts, transactions, transfers, budgets, loans: finance.loans, settings };
+    const data: AppData = { accounts, transactions, transfers, loans: finance.loans };
     downloadFile(`moneymate-backup-${dayjs().format("YYYY-MM-DD")}.json`, JSON.stringify(data, null, 2), "application/json");
     toast.success("Backup downloaded");
   };
@@ -61,7 +60,6 @@ function SettingsPage() {
       Category: t.category,
       Type: t.type,
       Amount: t.amount,
-      Note: t.note ?? "",
     }));
     downloadFile(`moneymate-transactions-${dayjs().format("YYYY-MM-DD")}.csv`, toCSV(rows), "text/csv");
     toast.success("CSV exported");
@@ -77,9 +75,7 @@ function SettingsPage() {
           accounts: parsed.accounts,
           transactions: parsed.transactions,
           transfers: parsed.transfers ?? [],
-          budgets: parsed.budgets ?? [],
           loans: parsed.loans ?? [],
-          settings: { ...settings, ...(parsed.settings ?? {}) },
         });
         toast.success("Data restored");
       } catch {
@@ -91,41 +87,9 @@ function SettingsPage() {
 
   return (
     <AppLayout>
-      <PageHeader title="Settings" subtitle="Preferences, backup and data" />
+      <PageHeader title="Settings" subtitle="Backup and data management" />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Preferences">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-border p-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold">Theme</p>
-                <p className="text-xs text-muted-foreground">Light theme only</p>
-              </div>
-              <span className="rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-primary">Light</span>
-            </div>
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-border p-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold">Currency</p>
-                <p className="text-xs text-muted-foreground">Bangladeshi Taka</p>
-              </div>
-              <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold">৳ BDT</span>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase text-muted-foreground">Number format</Label>
-              <select
-                className="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
-                value={settings.numberFormat}
-                onChange={(e) => updateSettings({ numberFormat: e.target.value as typeof settings.numberFormat })}
-              >
-                <option value="en-US">1,234,567.89 (International)</option>
-                <option value="en-IN">12,34,567.89 (South Asian)</option>
-                <option value="bn-BD">১২,৩৪,৫৬৭.৮৯ (Bangla)</option>
-              </select>
-              <p className="text-xs text-muted-foreground">Preview: {b.money(1234567.89)}</p>
-            </div>
-          </div>
-        </Panel>
-
         <Panel title="Export & backup">
           <div className="space-y-3">
             <Button variant="outline" className="w-full justify-start gap-2" onClick={exportCSV}>
@@ -165,7 +129,7 @@ function SettingsPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Clear all data?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Every account, transaction, transfer and budget stored on this device will be erased. This cannot be
+                    Every account, transaction, transfer stored on this device will be erased. This cannot be
                     undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>

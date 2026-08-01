@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  ArrowLeft, Pencil, Phone, Info, FileText, Trash2, Banknote, Plus, CheckCircle2,
+  ArrowLeft, Pencil, Info, FileText, Trash2, Banknote, Plus, CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,7 +41,6 @@ export function LoanDetail({ loan, onBack }: { loan: Loan; onBack: () => void })
       date: loan.loanDate,
       title: loan.direction === "receivable" ? "Loan Given" : "Loan Taken",
       amount: initialAmount,
-      note: undefined,
     },
     ...(loan.increases ?? []).map((inc) => ({
       id: inc.id,
@@ -49,7 +48,6 @@ export function LoanDetail({ loan, onBack }: { loan: Loan; onBack: () => void })
       date: inc.date,
       title: loan.direction === "receivable" ? "Additional Loan Given" : "Additional Loan Taken",
       amount: inc.amount,
-      note: inc.note,
     })),
     ...loan.payments.map((p) => ({
       id: p.id,
@@ -57,7 +55,6 @@ export function LoanDetail({ loan, onBack }: { loan: Loan; onBack: () => void })
       date: p.date,
       title: loan.direction === "receivable" ? "Payment Received" : "Payment Made",
       amount: p.amount,
-      note: p.note,
     })),
   ].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -78,11 +75,6 @@ export function LoanDetail({ loan, onBack }: { loan: Loan; onBack: () => void })
             {loan.contactName.charAt(0).toUpperCase()}
           </div>
           <p className="text-lg font-bold">{loan.contactName}</p>
-          {loan.contactPhone && (
-            <p className="flex items-center gap-1 text-sm text-muted-foreground">
-              <Phone className="h-3.5 w-3.5" /> {loan.contactPhone}
-            </p>
-          )}
           <span className={cn("mt-2 rounded-full px-3 py-1 text-xs font-semibold", dir.color)}>
             {dirLabel(loan.direction, loan.status)}
           </span>
@@ -140,7 +132,7 @@ export function LoanDetail({ loan, onBack }: { loan: Loan; onBack: () => void })
           <div key={item.id} className="group flex items-center justify-between border-b border-border px-4 py-3 last:border-0">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{fmtDate(item.date)}</p>
-              <p className="mt-0.5 text-sm font-medium">{item.title}{item.note && <span className="ml-1 text-muted-foreground">· {item.note}</span>}</p>
+              <p className="mt-0.5 text-sm font-medium">{item.title}</p>
             </div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-sm">{fmt(item.amount)}</span>

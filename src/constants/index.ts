@@ -1,4 +1,4 @@
-import type { Account, Settings } from "@/types";
+import type { Account } from "@/types";
 import {
   Wallet,
   Smartphone,
@@ -26,11 +26,10 @@ export type AccountIconKey = keyof typeof ACCOUNT_ICONS;
 
 /** Direct image logos for accounts and MFS services */
 export const ACCOUNT_LOGOS: Record<string, string> = {
-  cash: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTMZNt3WzFNMK6lk77Md1I_Bz6GpXh8PWhYe-IFr0m2SA&s=10",
-  bank: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQU0XsZiQqR6FJMcIyaCMYnDBVdySk4ZPHsUkRF-hrYJXzAnUxXyh7fOZ86&s=10",
-  bkash: "https://static.vecteezy.com/system/resources/previews/039/340/798/non_2x/bkash-logo-free-vector.jpg",
-  nagad: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ7x4tqkMqhSTJP70NjbamU4GjWZhAc1eSCwQPrqeJ7Dw&s=10",
-  rocket: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTImDMUhElLiivUwlRk-xrcDLkSPvdOadomCn62o0cgzQ&s=10",
+  cash: "/logos/cash.png",
+  bkash: "/logos/bkash.png",
+  nagad: "/logos/nagad.png",
+  rocket: "/logos/rocket.png",
 };
 
 export const ACCOUNT_COLORS = [
@@ -45,17 +44,12 @@ export const ACCOUNT_COLORS = [
 ];
 
 export const DEFAULT_ACCOUNTS: Account[] = [
-  { id: "cash", name: "Cash", icon: "wallet", color: "#16A34A", openingBalance: 0, isDefault: true },
-  { id: "bkash", name: "Bkash", icon: "smartphone", color: "#DB2777", openingBalance: 0, isDefault: true },
-  { id: "nagad", name: "Nagad", icon: "smartphone", color: "#F59E0B", openingBalance: 0, isDefault: true },
-  { id: "rocket", name: "Rocket", icon: "smartphone", color: "#7C3AED", openingBalance: 0, isDefault: true },
-  { id: "bank", name: "Bank Account", icon: "landmark", color: "#2563EB", openingBalance: 0, isDefault: true },
+  { id: "cash", name: "Cash", icon: "wallet", color: "#16A34A", type: "cash", openingBalance: 0, isDefault: true },
+  { id: "bkash", name: "Bkash", icon: "smartphone", color: "#DB2777", type: "mfs", openingBalance: 0, isDefault: true },
+  { id: "nagad", name: "Nagad", icon: "smartphone", color: "#F59E0B", type: "mfs", openingBalance: 0, isDefault: true },
+  { id: "rocket", name: "Rocket", icon: "smartphone", color: "#7C3AED", type: "mfs", openingBalance: 0, isDefault: true },
+  { id: "bank", name: "Bank Account", icon: "landmark", color: "#2563EB", type: "bank", openingBalance: 0, isDefault: true },
 ];
-
-/** Accounts grouped for dashboard summaries. */
-export const MFS_ACCOUNT_IDS = ["bkash", "nagad", "rocket"];
-export const CASH_ACCOUNT_IDS = ["cash"];
-export const BANK_ACCOUNT_IDS = ["bank"];
 
 export const INCOME_CATEGORIES = [
   "Salary",
@@ -112,10 +106,3 @@ export const CATEGORY_COLORS = [
   "#6366F1",
   "#475569",
 ];
-
-export const DEFAULT_SETTINGS: Settings = {
-  currency: "৳",
-  numberFormat: "en-US",
-};
-
-export const STORAGE_KEY = "bd-finance-tracker-v1";

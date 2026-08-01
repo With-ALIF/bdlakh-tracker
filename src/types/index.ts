@@ -9,6 +9,7 @@ export interface Account {
   icon: string;
   /** hex color indicator */
   color: string;
+  type: string;
   /** starting balance; live balance is derived from transactions */
   openingBalance: number;
   /** default accounts cannot be deleted */
@@ -24,7 +25,6 @@ export interface Transaction {
   category: string;
   /** ISO date (YYYY-MM-DD) */
   date: string;
-  note?: string;
   createdAt: string;
   loanId?: string;
   loanPaymentId?: string;
@@ -37,16 +37,7 @@ export interface Transfer {
   toAccountId: string;
   amount: number;
   date: string;
-  note?: string;
   createdAt: string;
-}
-
-export interface Budget {
-  id: string;
-  category: string;
-  amount: number;
-  /** YYYY-MM */
-  month: string;
 }
 
 export type LoanDirection = "receivable" | "payable";
@@ -57,7 +48,6 @@ export interface LoanPayment {
   date: string; // ISO date
   amount: number;
   accountId?: string;
-  note?: string;
 }
 
 export interface LoanIncrease {
@@ -65,37 +55,27 @@ export interface LoanIncrease {
   date: string; // ISO date
   amount: number;
   accountId?: string;
-  note?: string;
 }
 
 export interface Loan {
   id: string;
   contactName: string;
-  contactPhone?: string;
-  direction: LoanDirection; // receivable = others owe me, payable = I owe others
+  direction: LoanDirection;
   totalAmount: number;
   payments: LoanPayment[];
   increases?: LoanIncrease[];
   accountId: string;
-  loanType: string; // "Personal Loan", "Emergency Loan", etc.
-  loanDate: string; // ISO date
-  dueDate?: string; // ISO date
-  note?: string;
+  loanType: string;
+  loanDate: string;
+  dueDate?: string;
   status: LoanStatus;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface Settings {
-  currency: string;
-  numberFormat: "en-US" | "en-IN" | "bn-BD";
 }
 
 export interface AppData {
   accounts: Account[];
   transactions: Transaction[];
   transfers: Transfer[];
-  budgets: Budget[];
   loans: Loan[];
-  settings: Settings;
 }
