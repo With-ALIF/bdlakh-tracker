@@ -32,14 +32,18 @@ function Dashboard() {
   const [open, setOpen] = useState(false);
 
   const stats = useMemo(() => {
-    const monthly = transactions.filter((t) => dayjs(t.date).isSame(dayjs(), "month"));
+    const daily = transactions.filter((t) => dayjs(t.date).isSame(dayjs(), "day"));
     return {
-      monthIncome: sumBy(monthly, "income"),
-      monthExpense: sumBy(monthly, "expense"),
+      todayIncome: sumBy(daily, "income"),
+      todayExpense: sumBy(daily, "expense"),
     };
   }, [transactions]);
 
-  const recent = transactions.slice(0, 6);
+  const recent = useMemo(() => {
+    return [...transactions]
+      .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || "").localeCompare(a.createdAt || ""))
+      .slice(0, 6);
+  }, [transactions]);
 
   return (
     <AppLayout>
@@ -54,8 +58,8 @@ function Dashboard() {
       />
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-3">
-        <StatCard label="Monthly Income" value={b.money(stats.monthIncome)} icon={TrendingUp} tone="success" />
-        <StatCard label="Monthly Expense" value={b.money(stats.monthExpense)} icon={TrendingDown} tone="danger" />
+        <StatCard label="Daily Income" value={b.money(stats.todayIncome)} icon={TrendingUp} tone="success" />
+        <StatCard label="Daily Expense" value={b.money(stats.todayExpense)} icon={TrendingDown} tone="danger" />
         <StatCard label="Final Balance" value={b.money(b.total)} icon={PiggyBank} tone="primary" />
       </div>
 

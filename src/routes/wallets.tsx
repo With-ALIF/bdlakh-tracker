@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Plus, Pencil, Trash2, Wallet, CircleDollarSign } from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
-import { PageHeader, Panel, StatCard } from "@/components/ui-kit";
+import { PageHeader, Panel, StatCard, EmptyState } from "@/components/ui-kit";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
 import { ACCOUNT_COLORS, ACCOUNT_ICONS } from "@/constants";
@@ -102,49 +102,59 @@ function WalletsPage() {
         <StatCard label="Total Balance" value={b.money(b.total)} icon={CircleDollarSign} tone="primary" hint={`${accounts.length} account${accounts.length === 1 ? "" : "s"}`} />
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {accounts.map((a) => {
-          return (
-            <div key={a.id} className="card-surface animate-rise overflow-hidden p-5">
-              <span className="mb-4 block h-1.5 w-12 rounded-full" style={{ backgroundColor: a.color }} />
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl p-1.5"
-                    style={{ backgroundColor: `${a.color}1A`, color: a.color }}
-                  >
-                    <AccountIcon accountId={a.id} accountName={a.name} iconKey={a.icon} sizeClassName="h-6 w-6" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold">{a.name}</p>
+      {accounts.length === 0 ? (
+        <div className="mt-4">
+          <EmptyState
+            icon={Wallet}
+            title="No wallets yet"
+            subtitle="Click 'New account' above to create your first wallet."
+          />
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {accounts.map((a) => {
+            return (
+              <div key={a.id} className="card-surface animate-rise overflow-hidden p-5">
+                <span className="mb-4 block h-1.5 w-12 rounded-full" style={{ backgroundColor: a.color }} />
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-xl p-1.5"
+                      style={{ backgroundColor: `${a.color}1A`, color: a.color }}
+                    >
+                      <AccountIcon accountId={a.id} accountName={a.name} iconKey={a.icon} sizeClassName="h-6 w-6" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold">{a.name}</p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      aria-label="Edit account"
+                      onClick={() => openEdit(a)}
+                      className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    {!a.isDefault && (
+                      <button
+                        aria-label="Delete account"
+                        onClick={() => setPendingDelete(a)}
+                        className="rounded-lg p-2 text-muted-foreground transition hover:bg-danger-soft hover:text-danger"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-1">
-                  <button
-                    aria-label="Edit account"
-                    onClick={() => openEdit(a)}
-                    className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  {!a.isDefault && (
-                    <button
-                      aria-label="Delete account"
-                      onClick={() => setPendingDelete(a)}
-                      className="rounded-lg p-2 text-muted-foreground transition hover:bg-danger-soft hover:text-danger"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
+                <p className="mt-5 text-2xl font-bold tracking-tight">
+                  {b.money(b.balances.get(a.id) ?? 0)}
+                </p>
               </div>
-              <p className="mt-5 text-2xl font-bold tracking-tight">
-                {b.money(b.balances.get(a.id) ?? 0)}
-              </p>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="rounded-2xl sm:max-w-md">

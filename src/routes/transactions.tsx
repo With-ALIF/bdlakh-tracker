@@ -11,7 +11,6 @@ import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
 import { AccountIcon } from "@/components/AccountIcon";
 import { inRange, type RangeKey } from "@/utils/finance";
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/constants";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -70,7 +69,7 @@ const RANGES: { key: RangeKey | "custom"; label: string }[] = [
 ];
 
 function TransactionsPage() {
-  const { transactions, accounts, deleteTransaction, ready } = useFinance();
+  const { transactions, accounts, incomeCategories, expenseCategories, deleteTransaction, ready } = useFinance();
   const b = useBalances();
 
   const [query, setQuery] = useState("");
@@ -86,6 +85,16 @@ function TransactionsPage() {
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+
+  const isFiltered = query !== "" || range !== "all" || type !== "all" || account !== "all" || category !== "all";
+
+  const clearFilters = () => {
+    setQuery("");
+    setRange("all");
+    setType("all");
+    setAccount("all");
+    setCategory("all");
+  };
 
 
   const rows = useMemo(() => {
@@ -103,7 +112,20 @@ function TransactionsPage() {
       .filter((t) => type === "all" || t.type === type)
       .filter((t) => account === "all" || t.accountId === account)
       .filter((t) => category === "all" || t.category === category)
-      .filter((t) => !q || t.title.toLowerCase().includes(q) || t.category.toLowerCase().includes(q))
+      .filter((t) => {
+        if (!q) return true;
+        const dateStr = dayjs(t.date).format("DD MMM YYYY").toLowerCase();
+        const amountStr = t.amount.toString();
+        const accountName = b.accountName(t.accountId).toLowerCase();
+        return (
+          t.title.toLowerCase().includes(q) ||
+          t.category.toLowerCase().includes(q) ||
+          dateStr.includes(q) ||
+          accountName.includes(q) ||
+          t.type.includes(q) ||
+          amountStr.includes(q)
+        );
+      })
       .sort((a, c) => (sortDesc ? c.date.localeCompare(a.date) : a.date.localeCompare(c.date)));
   }, [transactions, query, range, customFromDate, customToDate, type, account, category, sortDesc]);
 
@@ -210,7 +232,7 @@ function TransactionsPage() {
             </select>
             <select className={selectCls} value={category} onChange={(e) => setCategory(e.target.value)}>
               <option value="all">All categories</option>
-              {[...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES]
+              {[...incomeCategories, ...expenseCategories]
                 .filter((c, i, arr) => arr.indexOf(c) === i)
                 .map((c) => (
                   <option key={c} value={c}>
@@ -219,6 +241,14 @@ function TransactionsPage() {
                 ))}
             </select>
           </div>
+
+          {isFiltered && (
+            <div className="flex justify-end">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-muted-foreground hover:text-destructive" onClick={clearFilters}>
+                <Trash2 className="h-3.5 w-3.5" /> Clear Filters
+              </Button>
+            </div>
+          )}
         </div>
       </Panel>
 
@@ -251,7 +281,7 @@ function TransactionsPage() {
               </thead>
               <tbody>
                 {rows.map((t) => (
-                  <tr key={t.id} className="border-b border-border/60 transition hover:bg-muted/50">
+                  <tr key={t.id} className="border-b border-border/60 transition">
                     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                       {dayjs(t.date).format("DD MMM YYYY")}
                     </td>
@@ -285,7 +315,7 @@ function TransactionsPage() {
                     <td className="whitespace-nowrap px-4 py-3 text-right">
                       <button
                         aria-label="Edit"
-                        className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                        className="rounded-lg p-2 text-muted-foreground transition"
                         onClick={() => {
                           setEditing(t);
                           setOpen(true);
@@ -295,7 +325,7 @@ function TransactionsPage() {
                       </button>
                       <button
                         aria-label="Delete"
-                        className="rounded-lg p-2 text-muted-foreground transition hover:bg-danger-soft hover:text-danger"
+                        className="rounded-lg p-2 text-muted-foreground transition"
                         onClick={() => setPendingDelete(t)}
                       >
                         <Trash2 className="h-4 w-4" />

@@ -14,6 +14,8 @@ export interface Account {
   openingBalance: number;
   /** default accounts cannot be deleted */
   isDefault?: boolean;
+  /** links to payment_providers.id — set on both real wallets and virtual (provider-only) accounts */
+  providerId?: string;
 }
 
 export interface Transaction {

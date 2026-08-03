@@ -1,157 +1,271 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useRef } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import dayjs from "dayjs";
-import { Download, Upload, Trash2, FileJson, FileSpreadsheet, LogOut } from "lucide-react";
-import { toast } from "sonner";
+import {
+  LogOut,
+  Sun,
+  Moon,
+  ChevronRight,
+  Wallet,
+  Lock,
+  Loader2,
+  CheckCircle2,
+  Tags,
+} from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
 import { PageHeader, Panel } from "@/components/ui-kit";
 import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 import { useFinance } from "@/context/FinanceContext";
-import { useBalances } from "@/hooks/useBalances";
-import { downloadFile, toCSV } from "@/utils/finance";
 import { Button } from "@/components/ui/button";
-import type { AppData } from "@/types";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import { UserAvatar } from "@/components/UserAvatar";
+import { toast } from "sonner";
+import { CategoryManager } from "@/components/CategoryManager";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
     meta: [
-      { title: "Settings & Backup — Money Mate" },
-      { name: "description", content: "Export CSV or JSON, restore a backup, and manage your local data." },
-      { property: "og:title", content: "Settings & Backup — Money Mate" },
-      { property: "og:description", content: "Your data stays on this device — back it up any time." },
+      { title: "Profile — Money Mate" },
+      { name: "description", content: "Manage your Money Mate profile, wallets, and local data." },
+      { property: "og:title", content: "Profile — Money Mate" },
+      {
+        property: "og:description",
+        content: "Manage your Money Mate profile, wallets, and local data.",
+      },
+      { property: "og:type", content: "profile" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
-  component: SettingsPage,
+  component: ProfilePage,
 });
 
-function SettingsPage() {
-  const finance = useFinance();
-  const { signOut } = useAuth();
-  const { accounts, transactions, transfers, replaceAll, resetAll } = finance;
-  const b = useBalances();
-  const fileRef = useRef<HTMLInputElement>(null);
+function ProfilePage() {
+  const { user, signOut, updatePassword } = useAuth();
+  const { theme, setTheme } = useTheme();
+  const { categories } = useFinance();
+  const [catOpen, setCatOpen] = useState(false);
 
-  const exportJSON = () => {
-    const data: AppData = { accounts, transactions, transfers, loans: finance.loans };
-    downloadFile(`moneymate-backup-${dayjs().format("YYYY-MM-DD")}.json`, JSON.stringify(data, null, 2), "application/json");
-    toast.success("Backup downloaded");
-  };
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
-  const exportCSV = () => {
-    if (!transactions.length) {
-      toast.error("No transactions to export");
+  const memberSince = user?.createdAt
+    ? dayjs(user.createdAt).format("DD, MMM, YYYY")
+    : dayjs().format("DD, MMM, YYYY");
+
+  const enabledCount = categories.filter((c) => c.is_enabled).length;
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error("All fields are required");
       return;
     }
-    const rows = transactions.map((t) => ({
-      Date: t.date,
-      Title: t.title,
-      Account: b.accountName(t.accountId),
-      Category: t.category,
-      Type: t.type,
-      Amount: t.amount,
-    }));
-    downloadFile(`moneymate-transactions-${dayjs().format("YYYY-MM-DD")}.csv`, toCSV(rows), "text/csv");
-    toast.success("CSV exported");
-  };
+    if (newPassword.length < 6) {
+      toast.error("New password must be at least 6 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+    if (currentPassword === newPassword) {
+      toast.error("New password must be different from current password");
+      return;
+    }
 
-  const restore = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result)) as AppData;
-        if (!parsed.accounts || !Array.isArray(parsed.transactions)) throw new Error("Invalid file");
-        replaceAll({
-          accounts: parsed.accounts,
-          transactions: parsed.transactions,
-          transfers: parsed.transfers ?? [],
-          loans: parsed.loans ?? [],
-        });
-        toast.success("Data restored");
-      } catch {
-        toast.error("Could not read that backup file");
-      }
-    };
-    reader.readAsText(file);
+    setChangingPassword(true);
+    try {
+      await updatePassword({ currentPassword, newPassword });
+      toast.success("Password updated successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update password");
+    } finally {
+      setChangingPassword(false);
+    }
   };
 
   return (
     <AppLayout>
-      <PageHeader title="Settings" subtitle="Backup and data management" />
+      <PageHeader title="Profile" subtitle="Your account and preferences" />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Export & backup">
-          <div className="space-y-3">
-            <Button variant="outline" className="w-full justify-start gap-2" onClick={exportCSV}>
-              <FileSpreadsheet className="h-4 w-4" /> Export transactions as CSV
-            </Button>
-            <Button variant="outline" className="w-full justify-start gap-2" onClick={exportJSON}>
-              <FileJson className="h-4 w-4" /> Export all data as JSON
-            </Button>
-            <Button variant="outline" className="w-full justify-start gap-2" onClick={exportJSON}>
-              <Download className="h-4 w-4" /> Download local storage backup
-            </Button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="application/json"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) restore(f);
-                e.target.value = "";
-              }}
-            />
-            <Button variant="outline" className="w-full justify-start gap-2" onClick={() => fileRef.current?.click()}>
-              <Upload className="h-4 w-4" /> Restore from JSON file
-            </Button>
+      <div className="mx-auto max-w-2xl space-y-5">
+        {/* Profile hero */}
+        <div className="flex flex-col items-center text-center">
+          <UserAvatar
+            photoUrl={user?.photoUrl}
+            displayName={user?.displayName}
+            email={user?.email}
+            className="h-24 w-24 text-2xl font-bold"
+          />
+          <h2 className="mt-4 text-xl font-bold tracking-tight">
+            {user?.name ?? "Money Mate User"}
+          </h2>
+          <p className="text-sm text-muted-foreground">{user?.email ?? ""}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Member since {memberSince}</p>
+        </div>
 
-            <Button variant="outline" className="w-full justify-start gap-2" onClick={signOut}>
-              <LogOut className="h-4 w-4" /> Log Out
-            </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" className="w-full justify-start gap-2">
-                  <Trash2 className="h-4 w-4" /> Clear all data
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Clear all data?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Every account, transaction, transfer stored on this device will be erased. This cannot be
-                    undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => {
-                      resetAll();
-                      toast.success("All data cleared");
-                    }}
+        {/* Account Information */}
+        <Panel>
+          <h3 className="mb-4 text-sm font-bold">Account Information</h3>
+          <div className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Name
+                </Label>
+                <Input
+                  value={user?.name ?? ""}
+                  disabled
+                  className="cursor-not-allowed opacity-60"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Email
+                </Label>
+                <Input
+                  value={user?.email ?? ""}
+                  disabled
+                  className="cursor-not-allowed opacity-60"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Appearance
+              </Label>
+              <div className="grid grid-cols-2 gap-3">
+                {(["light", "dark"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTheme(t)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-xl border p-3 text-sm font-semibold capitalize transition-colors",
+                      theme === t
+                        ? "border-primary bg-primary-soft text-primary"
+                        : "border-border bg-card text-muted-foreground",
+                    )}
                   >
-                    Clear everything
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-
-            <p className="pt-1 text-xs text-muted-foreground">
-              All data is stored locally in your browser. Nothing is sent to a server.
-            </p>
+                    {t === "light" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                    {t} mode
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </Panel>
+
+        {/* Change Password */}
+        <Panel>
+          <div className="mb-4 flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-warning-soft text-warning">
+              <Lock className="h-4 w-4" />
+            </span>
+            <h3 className="text-sm font-bold">Change Password</h3>
+          </div>
+          <form onSubmit={handlePasswordChange} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Current Password
+              </Label>
+              <Input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter current password"
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  New Password
+                </Label>
+                <Input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Confirm New Password
+                </Label>
+                <Input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                />
+              </div>
+            </div>
+            <Button type="submit" disabled={changingPassword} className="gap-2">
+              {changingPassword ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              {changingPassword ? "Updating..." : "Update Password"}
+            </Button>
+          </form>
+        </Panel>
+
+        {/* Category Manager */}
+        <button type="button" onClick={() => setCatOpen(true)} className="w-full text-left">
+          <Panel className="transition-colors hover:bg-accent/50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-primary-soft text-primary">
+                  <Tags className="h-5 w-5" />
+                </span>
+                <div className="text-left">
+                  <h3 className="text-sm font-bold">Categories</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {enabledCount} of {categories.length} enabled
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </Panel>
+        </button>
+        <CategoryManager open={catOpen} onOpenChange={setCatOpen} />
+
+        {/* Wallets */}
+        <Link to="/wallets">
+          <Panel className="transition-colors hover:bg-accent/50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-success-soft text-success">
+                  <Wallet className="h-5 w-5" />
+                </span>
+                <div className="text-left">
+                  <h3 className="text-sm font-bold">Wallets</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Manage Cash, Bank, bKash, Nagad & Rocket
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </Panel>
+        </Link>
+
+        {/* Logout */}
+        <Button variant="destructive" className="w-full" onClick={signOut}>
+          <LogOut className="mr-2 h-4 w-4" /> Log Out
+        </Button>
       </div>
     </AppLayout>
   );

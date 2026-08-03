@@ -44,12 +44,21 @@ export const ACCOUNT_COLORS = [
 ];
 
 export const DEFAULT_ACCOUNTS: Account[] = [
-  { id: "cash", name: "Cash", icon: "wallet", color: "#16A34A", type: "cash", openingBalance: 0, isDefault: true },
-  { id: "bkash", name: "Bkash", icon: "smartphone", color: "#DB2777", type: "mfs", openingBalance: 0, isDefault: true },
-  { id: "nagad", name: "Nagad", icon: "smartphone", color: "#F59E0B", type: "mfs", openingBalance: 0, isDefault: true },
-  { id: "rocket", name: "Rocket", icon: "smartphone", color: "#7C3AED", type: "mfs", openingBalance: 0, isDefault: true },
-  { id: "bank", name: "Bank Account", icon: "landmark", color: "#2563EB", type: "bank", openingBalance: 0, isDefault: true },
+  { id: "a0000000-0000-0000-0000-000000000001", name: "Cash", icon: "wallet", color: "#16A34A", type: "cash", openingBalance: 0, isDefault: true, providerId: "a0000000-0000-0000-0000-000000000001" },
+  { id: "a0000000-0000-0000-0000-000000000002", name: "Bkash", icon: "smartphone", color: "#DB2777", type: "mfs", openingBalance: 0, isDefault: true, providerId: "a0000000-0000-0000-0000-000000000002" },
+  { id: "a0000000-0000-0000-0000-000000000003", name: "Nagad", icon: "smartphone", color: "#F59E0B", type: "mfs", openingBalance: 0, isDefault: true, providerId: "a0000000-0000-0000-0000-000000000003" },
+  { id: "a0000000-0000-0000-0000-000000000004", name: "Rocket", icon: "smartphone", color: "#7C3AED", type: "mfs", openingBalance: 0, isDefault: true, providerId: "a0000000-0000-0000-0000-000000000004" },
+  { id: "a0000000-0000-0000-0000-000000000005", name: "Bank Account", icon: "landmark", color: "#2563EB", type: "bank", openingBalance: 0, isDefault: true, providerId: "a0000000-0000-0000-0000-000000000005" },
 ];
+
+/** Maps payment_providers.id → default UI properties for virtual (no wallet yet) accounts */
+export const PROVIDER_DEFAULTS: Record<string, { name: string; icon: string; color: string; type: string }> = {
+  "a0000000-0000-0000-0000-000000000001": { name: "Cash", icon: "wallet", color: "#16A34A", type: "cash" },
+  "a0000000-0000-0000-0000-000000000002": { name: "Bkash", icon: "smartphone", color: "#DB2777", type: "mfs" },
+  "a0000000-0000-0000-0000-000000000003": { name: "Nagad", icon: "smartphone", color: "#F59E0B", type: "mfs" },
+  "a0000000-0000-0000-0000-000000000004": { name: "Rocket", icon: "smartphone", color: "#7C3AED", type: "mfs" },
+  "a0000000-0000-0000-0000-000000000005": { name: "Bank Account", icon: "landmark", color: "#2563EB", type: "bank" },
+};
 
 export const INCOME_CATEGORIES = [
   "Salary",

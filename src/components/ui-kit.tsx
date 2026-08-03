@@ -105,11 +105,11 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <header className="mb-5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:flex sm:flex-wrap sm:justify-between">
+    <header className="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div className="min-w-0">
         <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">{title}</h1>
         {subtitle ? (
-          <p className="mt-1 truncate text-sm text-muted-foreground">{subtitle}</p>
+          <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{subtitle}</p>
         ) : null}
       </div>
       {action}

@@ -12,6 +12,13 @@ import {
   Flame,
   CalendarClock,
   CreditCard,
+  Calendar,
+  Hash,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Trophy,
+  Repeat,
+  Zap,
 } from "lucide-react";
 import {
   AreaChart,
@@ -34,25 +41,44 @@ import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
 import { groupByCategory, sumBy } from "@/utils/finance";
 import { CATEGORY_COLORS } from "@/constants";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/chart")({
   head: () => ({
     meta: [
       { title: "Charts & Analytics — Money Mate" },
-      { name: "description", content: "Interactive visual charts, expense trends, and financial breakdown." },
+      {
+        name: "description",
+        content: "Interactive visual charts, expense trends, and financial breakdown.",
+      },
       { property: "og:title", content: "Charts & Analytics — Money Mate" },
-      { property: "og:description", content: "Detailed visual charts of your income, expenses, and savings." },
+      {
+        property: "og:description",
+        content: "Detailed visual charts of your income, expenses, and savings.",
+      },
     ],
   }),
   component: ChartPage,
 });
 
-type TimeRange = "today" | "this_week" | "15_days" | "this_month" | "3_months" | "6_months" | "this_year";
+type TimeRange =
+  | "today"
+  | "this_week"
+  | "15_days"
+  | "this_month"
+  | "3_months"
+  | "6_months"
+  | "this_year"
+  | "custom";
 
 function ChartPage() {
   const { transactions, accounts } = useFinance();
   const b = useBalances();
-  const [range, setRange] = useState<TimeRange>("6_months");
+  const [range, setRange] = useState<TimeRange>("this_month");
+  const [customFrom, setCustomFrom] = useState(() =>
+    dayjs().subtract(30, "day").format("YYYY-MM-DD"),
+  );
+  const [customTo, setCustomTo] = useState(() => dayjs().format("YYYY-MM-DD"));
 
   // Filter transactions based on selected range
   const filteredTxs = useMemo(() => {
@@ -66,21 +92,36 @@ function ChartPage() {
       if (range === "3_months") return d.isAfter(now.subtract(3, "month"));
       if (range === "6_months") return d.isAfter(now.subtract(6, "month"));
       if (range === "this_year") return d.isSame(now, "year");
+      if (range === "custom") {
+        const from = dayjs(customFrom);
+        const to = dayjs(customTo).endOf("day");
+        return (
+          (d.isAfter(from) || d.isSame(from, "day")) && (d.isBefore(to) || d.isSame(to, "day"))
+        );
+      }
       return true;
     });
-  }, [transactions, range]);
+  }, [transactions, range, customFrom, customTo]);
 
   const totalIncome = useMemo(() => sumBy(filteredTxs, "income"), [filteredTxs]);
   const totalExpense = useMemo(() => sumBy(filteredTxs, "expense"), [filteredTxs]);
   const netSavings = totalIncome - totalExpense;
-  const savingsRate = totalIncome > 0 ? Math.max(0, Math.round((netSavings / totalIncome) * 100)) : 0;
+  const savingsRate =
+    totalIncome > 0 ? Math.max(0, Math.round((netSavings / totalIncome) * 100)) : 0;
 
   // Monthly / Period chart data
   const chartData = useMemo(() => {
     if (range === "today") {
       const d = dayjs();
       const txs = filteredTxs;
-      return [{ month: d.format("DD MMM"), Income: sumBy(txs, "income"), Expense: sumBy(txs, "expense"), Net: sumBy(txs, "income") - sumBy(txs, "expense") }];
+      return [
+        {
+          month: d.format("DD MMM"),
+          Income: sumBy(txs, "income"),
+          Expense: sumBy(txs, "expense"),
+          Net: sumBy(txs, "income") - sumBy(txs, "expense"),
+        },
+      ];
     }
     if (range === "this_week") {
       return Array.from({ length: 7 }, (_, i) => {
@@ -106,6 +147,19 @@ function ChartPage() {
     else if (range === "6_months") monthCount = 6;
     else if (range === "this_year") monthCount = dayjs().month() + 1;
 
+    if (range === "custom") {
+      const from = dayjs(customFrom);
+      const to = dayjs(customTo);
+      const months = to.diff(from, "month") + 1;
+      return Array.from({ length: Math.max(months, 1) }, (_, i) => {
+        const m = from.add(i, "month");
+        const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(m, "month"));
+        const inc = sumBy(txs, "income");
+        const exp = sumBy(txs, "expense");
+        return { month: m.format("MMM YYYY"), Income: inc, Expense: exp, Net: inc - exp };
+      });
+    }
+
     return Array.from({ length: monthCount }, (_, i) => {
       const m = dayjs().subtract(monthCount - 1 - i, "month");
       const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(m, "month"));
@@ -129,20 +183,22 @@ function ChartPage() {
     if (range === "3_months") return 90;
     if (range === "6_months") return 180;
     if (range === "this_year") return dayjs().diff(dayjs().startOf("year"), "day") + 1;
+    if (range === "custom") return dayjs(customTo).diff(dayjs(customFrom), "day") + 1;
     return 14;
-  }, [range]);
+  }, [range, customFrom, customTo]);
 
   const dailyData = useMemo(() => {
+    const from = range === "custom" ? dayjs(customFrom) : dayjs().subtract(dayCount - 1, "day");
     return Array.from({ length: dayCount }, (_, i) => {
-      const d = dayjs().subtract(dayCount - 1 - i, "day");
-      const txs = transactions.filter((t) => dayjs(t.date).isSame(d, "day"));
+      const d = from.add(i, "day");
+      const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(d, "day"));
       return {
         date: d.format("DD MMM"),
         Income: sumBy(txs, "income"),
         Expense: sumBy(txs, "expense"),
       };
     });
-  }, [transactions, dayCount]);
+  }, [filteredTxs, dayCount, range, customFrom]);
 
   // Expense by Category
   const categoryData = useMemo(() => {
@@ -173,33 +229,71 @@ function ChartPage() {
     else if (range === "this_month") days = now.daysInMonth();
     else if (range === "3_months") days = 90;
     else if (range === "6_months") days = 180;
-    else if (range === "this_year") return Array.from({ length: now.month() + 1 }, (_, i) => {
-      const m = now.startOf("year").add(i, "month");
-      const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(m, "month"));
-      return { day: m.format("MMM"), Spent: sumBy(txs, "expense") };
-    });
+    else if (range === "custom") days = dayjs(customTo).diff(dayjs(customFrom), "day") + 1;
+    else if (range === "this_year")
+      return Array.from({ length: now.month() + 1 }, (_, i) => {
+        const m = now.startOf("year").add(i, "month");
+        const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(m, "month"));
+        return { day: m.format("MMM"), Spent: sumBy(txs, "expense") };
+      });
     else days = 7;
 
+    const from = range === "custom" ? dayjs(customFrom) : now.subtract(days - 1, "day");
     return Array.from({ length: days }, (_, i) => {
-      const d = now.subtract(days - 1 - i, "day");
+      const d = from.add(i, "day");
       const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(d, "day"));
-      return { day: days <= 31 ? d.format("DD MMM") : d.format("MMM DD"), Spent: sumBy(txs, "expense") };
+      return {
+        day: days <= 31 ? d.format("DD MMM") : d.format("MMM DD"),
+        Spent: sumBy(txs, "expense"),
+      };
     });
-  }, [filteredTxs, range]);
+  }, [filteredTxs, range, customFrom, customTo]);
 
   const insights = useMemo(() => {
-    const expenses = transactions.filter((t) => t.type === "expense");
-    const days = new Set(expenses.map((t) => t.date)).size || 1;
+    const expenses = filteredTxs.filter((t) => t.type === "expense");
+    const incomes = filteredTxs.filter((t) => t.type === "income");
+    const totalExpenseAmt = expenses.reduce((s, t) => s + t.amount, 0);
+    const avgDaily = dayCount > 0 ? totalExpenseAmt / dayCount : 0;
+
+    // Most expensive day
+    const dayMap = new Map<string, number>();
+    for (const t of expenses) {
+      dayMap.set(t.date, (dayMap.get(t.date) ?? 0) + t.amount);
+    }
+    const mostExpensiveDay = [...dayMap.entries()].sort((a, b) => b[1] - a[1])[0];
+
+    // Most frequent category
+    const catCount = new Map<string, number>();
+    for (const t of filteredTxs) {
+      catCount.set(t.category, (catCount.get(t.category) ?? 0) + 1);
+    }
+    const mostFrequent = [...catCount.entries()].sort((a, b) => b[1] - a[1])[0];
+
+    // Highest single transaction
+    const highestTx = filteredTxs.length
+      ? filteredTxs.reduce((max, t) => (t.amount > max.amount ? t : max), filteredTxs[0])
+      : null;
+
     const accountUse = new Map<string, number>();
-    for (const t of transactions) accountUse.set(t.accountId, (accountUse.get(t.accountId) ?? 0) + 1);
+    for (const t of filteredTxs)
+      accountUse.set(t.accountId, (accountUse.get(t.accountId) ?? 0) + 1);
     const mostUsed = [...accountUse.entries()].sort((a, c) => c[1] - a[1])[0];
+
     return {
       topCategory: categoryData[0]?.name ?? "—",
       topCategoryAmount: categoryData[0]?.value ?? 0,
-      avgDaily: expenses.reduce((s, t) => s + t.amount, 0) / days,
+      avgDaily,
       mostUsedAccount: mostUsed ? b.accountName(mostUsed[0]) : "—",
+      totalTransactions: filteredTxs.length,
+      incomeTransactions: incomes.length,
+      expenseTransactions: expenses.length,
+      mostExpensiveDay: mostExpensiveDay
+        ? { date: mostExpensiveDay[0], amount: mostExpensiveDay[1] }
+        : null,
+      mostFrequentCategory: mostFrequent ? mostFrequent[0] : "—",
+      highestSingleTx: highestTx,
     };
-  }, [transactions, categoryData, b]);
+  }, [filteredTxs, categoryData, b, dayCount]);
 
   const hasData = transactions.length > 0;
 
@@ -209,7 +303,90 @@ function ChartPage() {
         title="Charts & Analytics"
         subtitle="Visualise income, expense patterns and net balance trends"
         action={
-          <div>
+          <div className="w-full sm:w-auto">
+            {/* Desktop buttons */}
+            <div className="hidden items-center gap-1.5 rounded-xl border border-border bg-card p-1 text-xs lg:flex">
+              <button
+                onClick={() => setRange("today")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "today"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Today
+              </button>
+              <button
+                onClick={() => setRange("this_week")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "this_week"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                This Week
+              </button>
+              <button
+                onClick={() => setRange("15_days")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "15_days"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                15 Days
+              </button>
+              <button
+                onClick={() => setRange("this_month")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "this_month"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                This Month
+              </button>
+              <button
+                onClick={() => setRange("3_months")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "3_months"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                3 Months
+              </button>
+              <button
+                onClick={() => setRange("6_months")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "6_months"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                6 Months
+              </button>
+              <button
+                onClick={() => setRange("this_year")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "this_year"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                This Year
+              </button>
+              <button
+                onClick={() => setRange("custom")}
+                className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "custom"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Calendar className="h-3 w-3" /> Custom
+              </button>
+            </div>
             {/* Mobile dropdown */}
             <select
               value={range}
@@ -223,91 +400,142 @@ function ChartPage() {
               <option value="3_months">3 Months</option>
               <option value="6_months">6 Months</option>
               <option value="this_year">This Year</option>
+              <option value="custom">Custom Range</option>
             </select>
-            {/* Desktop buttons */}
-            <div className="hidden items-center gap-1.5 rounded-xl border border-border bg-card p-1 text-xs lg:flex">
-              <button
-                onClick={() => setRange("today")}
-                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                  range === "today" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Today
-              </button>
-              <button
-                onClick={() => setRange("this_week")}
-                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                  range === "this_week" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                This Week
-              </button>
-              <button
-                onClick={() => setRange("15_days")}
-                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                  range === "15_days" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                15 Days
-              </button>
-              <button
-                onClick={() => setRange("this_month")}
-                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                  range === "this_month" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                This Month
-              </button>
-              <button
-                onClick={() => setRange("3_months")}
-                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                  range === "3_months" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                3 Months
-              </button>
-              <button
-                onClick={() => setRange("6_months")}
-                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                  range === "6_months" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                6 Months
-              </button>
-              <button
-                onClick={() => setRange("this_year")}
-                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                  range === "this_year" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                This Year
-              </button>
-            </div>
+            {/* Custom date range picker */}
+            {range === "custom" && (
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    className="h-8 w-full rounded-lg border border-border bg-card px-2 text-xs outline-none focus:ring-2 focus:ring-ring/40 sm:w-auto"
+                  />
+                </div>
+                <span className="text-xs font-bold text-muted-foreground">to</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="h-8 w-full rounded-lg border border-border bg-card px-2 text-xs outline-none focus:ring-2 focus:ring-ring/40 sm:w-auto"
+                />
+              </div>
+            )}
           </div>
         }
       />
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-4">
-        <StatCard label="Total Income" value={b.money(totalIncome)} icon={TrendingUp} tone="success" />
-        <StatCard label="Total Expense" value={b.money(totalExpense)} icon={TrendingDown} tone="danger" />
-        <StatCard label="Net Savings" value={b.money(netSavings)} icon={PiggyBank} tone={netSavings >= 0 ? "primary" : "danger"} />
-        <StatCard label="Savings Rate" value={`${savingsRate}%`} icon={Percent} tone={savingsRate >= 20 ? "success" : "warning"} hint="Target > 20%" />
+        <StatCard
+          label="Total Income"
+          value={b.money(totalIncome)}
+          icon={TrendingUp}
+          tone="success"
+        />
+        <StatCard
+          label="Total Expense"
+          value={b.money(totalExpense)}
+          icon={TrendingDown}
+          tone="danger"
+        />
+        <StatCard
+          label="Net Savings"
+          value={b.money(netSavings)}
+          icon={PiggyBank}
+          tone={netSavings >= 0 ? "primary" : "danger"}
+        />
+        <StatCard
+          label="Savings Rate"
+          value={`${savingsRate}%`}
+          icon={Percent}
+          tone={savingsRate >= 20 ? "success" : "warning"}
+          hint="Target > 20%"
+        />
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-3 sm:mt-4 sm:grid-cols-3">
-        <StatCard label="Highest expense category" value={insights.topCategory} hint={b.money(insights.topCategoryAmount)} icon={Flame} tone="danger" />
-        <StatCard label="Average daily spending" value={b.money(insights.avgDaily || 0)} icon={CalendarClock} tone="warning" />
-        <StatCard label="Most used account" value={insights.mostUsedAccount} icon={CreditCard} tone="primary" />
+        <StatCard
+          label="Highest expense category"
+          value={insights.topCategory}
+          hint={b.money(insights.topCategoryAmount)}
+          icon={Flame}
+          tone="danger"
+        />
+        <StatCard
+          label="Average daily spending"
+          value={b.money(insights.avgDaily || 0)}
+          icon={CalendarClock}
+          tone="warning"
+        />
+        <StatCard
+          label="Most used account"
+          value={insights.mostUsedAccount}
+          icon={CreditCard}
+          tone="primary"
+        />
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:mt-4 sm:grid-cols-2 md:grid-cols-3">
+        <StatCard
+          label="Total Transactions"
+          value={String(insights.totalTransactions)}
+          icon={Hash}
+          tone="default"
+        />
+        <StatCard
+          label="Income Transactions"
+          value={String(insights.incomeTransactions)}
+          icon={ArrowDownLeft}
+          tone="success"
+        />
+        <StatCard
+          label="Expense Transactions"
+          value={String(insights.expenseTransactions)}
+          icon={ArrowUpRight}
+          tone="danger"
+        />
+        <StatCard
+          label="Most Expensive Day"
+          value={insights.mostExpensiveDay ? b.money(insights.mostExpensiveDay.amount) : "—"}
+          hint={
+            insights.mostExpensiveDay
+              ? dayjs(insights.mostExpensiveDay.date).format("DD MMM")
+              : undefined
+          }
+          icon={Trophy}
+          tone="danger"
+        />
+        <StatCard
+          label="Most Frequent Category"
+          value={insights.mostFrequentCategory}
+          icon={Repeat}
+          tone="primary"
+        />
+        <StatCard
+          label="Highest Single Transaction"
+          value={insights.highestSingleTx ? b.money(insights.highestSingleTx.amount) : "—"}
+          hint={insights.highestSingleTx ? insights.highestSingleTx.title : undefined}
+          icon={Zap}
+          tone="warning"
+        />
       </div>
 
       {!hasData ? (
         <Panel className="mt-4">
-          <EmptyState icon={BarChart3} title="No transaction records" description="Start logging transactions to view detailed chart analytics." />
+          <EmptyState
+            icon={BarChart3}
+            title="No transaction records"
+            description="Start logging transactions to view detailed chart analytics."
+          />
         </Panel>
       ) : (
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {/* Income vs Expense Area Chart */}
-          <Panel title={`Income vs Expense (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}>
+          <Panel
+            title={`Income vs Expense (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}
+          >
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
@@ -326,8 +554,22 @@ function ChartPage() {
                   <YAxis tickLine={false} axisLine={false} fontSize={12} width={52} />
                   <Tooltip formatter={(v: number) => b.money(v)} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                  <Area type="monotone" dataKey="Income" stroke="#16A34A" strokeWidth={2.5} fillOpacity={1} fill="url(#colorInc)" />
-                  <Area type="monotone" dataKey="Expense" stroke="#DC2626" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExp)" />
+                  <Area
+                    type="monotone"
+                    dataKey="Income"
+                    stroke="#16A34A"
+                    strokeWidth={2.5}
+                    fillOpacity={1}
+                    fill="url(#colorInc)"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="Expense"
+                    stroke="#DC2626"
+                    strokeWidth={2.5}
+                    fillOpacity={1}
+                    fill="url(#colorExp)"
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -339,7 +581,14 @@ function ChartPage() {
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={100} paddingAngle={3}>
+                    <Pie
+                      data={categoryData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={3}
+                    >
                       {categoryData.map((_, i) => (
                         <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
                       ))}
@@ -360,7 +609,14 @@ function ChartPage() {
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={incomeData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={100} paddingAngle={3}>
+                    <Pie
+                      data={incomeData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={3}
+                    >
                       {incomeData.map((_, i) => (
                         <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
                       ))}
@@ -376,7 +632,9 @@ function ChartPage() {
           </Panel>
 
           {/* Daily Trend Bar Chart */}
-          <Panel title={`Daily Trend (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}>
+          <Panel
+            title={`Daily Trend (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}
+          >
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dailyData}>
@@ -393,7 +651,9 @@ function ChartPage() {
           </Panel>
 
           {/* Weekly Spending */}
-          <Panel title={`Spending (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}>
+          <Panel
+            title={`Spending (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}
+          >
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={weeklyData}>
@@ -415,7 +675,14 @@ function ChartPage() {
                   <BarChart data={accountData} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" />
                     <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
-                    <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} fontSize={12} width={80} />
+                    <YAxis
+                      dataKey="name"
+                      type="category"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={12}
+                      width={80}
+                    />
                     <Tooltip formatter={(v: number) => b.money(v)} />
                     <Bar dataKey="value" radius={[0, 6, 6, 0]}>
                       {accountData.map((d, i) => (

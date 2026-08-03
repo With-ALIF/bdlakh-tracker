@@ -4,7 +4,9 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
+
   type ReactNode,
 } from "react";
 import type {
@@ -17,7 +19,7 @@ import type {
   Transfer,
   TxType,
 } from "@/types";
-import { DEFAULT_ACCOUNTS } from "@/constants";
+import { DEFAULT_ACCOUNTS, PROVIDER_DEFAULTS } from "@/constants";
 import { supabase } from "@/lib/supabase";
 
 /* ─── helpers ──────────────────────────────────────────────── */
@@ -34,7 +36,7 @@ function computeLoanStatus(
   isCompleted: boolean,
   paidAmount: number,
   totalAmount: number,
-  dueDate?: string | null
+  dueDate?: string | null,
 ): Loan["status"] {
   if (isCompleted || paidAmount >= totalAmount) return "completed";
   if (dueDate && dueDate < new Date().toISOString().slice(0, 10)) return "overdue";
@@ -82,11 +84,7 @@ function rowToTransfer(r: any): Transfer {
   };
 }
 
-function rowToLoan(
-  r: any,
-  payments: LoanPayment[],
-  increases: LoanIncrease[]
-): Loan {
+function rowToLoan(r: any, payments: LoanPayment[], increases: LoanIncrease[]): Loan {
   const paidAmount = Number(r.paid_amount);
   const totalAmount = Number(r.total_amount);
   return {
@@ -135,11 +133,15 @@ function accountToRow(a: Account, userId: string) {
     opening_balance: a.openingBalance,
     is_default: a.isDefault ?? false,
     user_id: userId,
-    provider_id: PROVIDER_MAP[a.type] ?? PROVIDER_MAP[a.id] ?? null,
+    provider_id: a.providerId ?? PROVIDER_MAP[a.type] ?? PROVIDER_MAP[a.id] ?? null,
   };
 }
 
-function transactionToRow(t: Omit<Transaction, "id" | "createdAt">, userId: string, catIdMap: Record<string, string>) {
+function transactionToRow(
+  t: Omit<Transaction, "id" | "createdAt">,
+  userId: string,
+  catIdMap: Record<string, string>,
+) {
   return {
     title: t.title,
     amount: t.amount,
@@ -164,7 +166,10 @@ function transferToRow(t: Omit<Transfer, "id" | "createdAt">, userId: string) {
   };
 }
 
-function loanToRow(l: Omit<Loan, "id" | "createdAt" | "updatedAt" | "payments" | "status">, userId: string) {
+function loanToRow(
+  l: Omit<Loan, "id" | "createdAt" | "updatedAt" | "payments" | "status">,
+  userId: string,
+) {
   return {
     person_name: l.contactName,
     is_receivable: l.direction === "receivable",
@@ -202,8 +207,20 @@ function loanIncreaseToRow(inc: Omit<LoanIncrease, "id">, loanId: string, userId
 
 /* ─── interface ────────────────────────────────────────────── */
 
+interface CategoryRow {
+  id: string;
+  name: string;
+  is_income: boolean;
+  is_default: boolean;
+  is_enabled: boolean;
+  user_id?: string | null;
+}
+
 interface FinanceContextValue extends AppData {
   ready: boolean;
+  categories: CategoryRow[];
+  incomeCategories: string[];
+  expenseCategories: string[];
   addTransaction: (t: Omit<Transaction, "id" | "createdAt">) => void;
   updateTransaction: (id: string, t: Omit<Transaction, "id" | "createdAt">) => void;
   deleteTransaction: (id: string) => void;
@@ -221,6 +238,10 @@ interface FinanceContextValue extends AppData {
   deleteLoanIncrease: (loanId: string, increaseId: string) => void;
   replaceAll: (data: AppData) => void;
   resetAll: () => void;
+  addCategory: (name: string, isIncome: boolean) => Promise<void>;
+  updateCategory: (id: string, name: string) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
+  toggleCategory: (id: string, enabled: boolean) => Promise<void>;
 }
 
 const FinanceContext = createContext<FinanceContextValue | null>(null);
@@ -236,17 +257,24 @@ function emptyAppData(): AppData {
   };
 }
 
+/* ─── category cache key: name (case-insensitive) + income flag ─── */
+
+function catKey(name: string, isIncome: boolean) {
+  return `${name.trim().toLowerCase()}|${isIncome ? "income" : "expense"}`;
+}
+
 /* ─── provider ─────────────────────────────────────────────── */
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(emptyAppData);
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
+  /** name+type → category id, so we never re-INSERT an existing category */
+  const catCacheRef = useRef<Map<string, string>>(new Map());
 
-  const patch = useCallback(
-    (fn: (d: AppData) => AppData) => setData((prev) => fn(prev)),
-    [],
-  );
+
+  const patch = useCallback((fn: (d: AppData) => AppData) => setData((prev) => fn(prev)), []);
 
   /* ── load user & data on mount ──────────────────────────── */
 
@@ -272,48 +300,102 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           loanPaymentsRes,
           loanIncreasesRes,
           categoriesRes,
+          categorySettingsRes,
         ] = await Promise.all([
           supabase.from("wallets").select("*").eq("user_id", uid),
-          supabase.from("transactions").select("*").eq("user_id", uid),
+          supabase
+            .from("transactions")
+            .select("*")
+            .eq("user_id", uid)
+            .order("transaction_date", { ascending: false })
+            .order("created_at", { ascending: false }),
           supabase.from("transfers").select("*").eq("user_id", uid),
           supabase.from("loans").select("*").eq("user_id", uid),
           supabase.from("loan_payments").select("*").eq("user_id", uid),
           supabase.from("loan_increases").select("*").eq("user_id", uid),
+          // load default (user_id IS NULL) + user-owned categories together
           supabase.from("categories").select("*").or(`user_id.is.null,user_id.eq.${uid}`),
+          // load per-user toggle overrides for default categories
+          supabase.from("category_settings").select("*").eq("user_id", uid),
         ]);
 
         if (cancelled) return;
 
-        // build category maps
-        const catNameToId: Record<string, string> = {};
-        const catIdToName: Record<string, string> = {};
-        (categoriesRes.data ?? []).forEach((c: any) => {
-          catNameToId[c.name] = c.id;
-          catIdToName[c.id] = c.name;
+        // Build a map: category_id → is_enabled from category_settings
+        // A row in category_settings means is_enabled = false (disabled by user)
+        const settingsMap = new Map<string, boolean>();
+        (categorySettingsRes.data ?? []).forEach((s: any) => {
+          settingsMap.set(s.category_id, s.is_enabled);
         });
 
-        // wallets → accounts
-        let accounts = (walletsRes.data ?? []).map(rowToAccount);
-
-        // If user has no wallets, create defaults
-        if (accounts.length === 0) {
-          const inserted: Account[] = [];
-          for (const def of DEFAULT_ACCOUNTS) {
-            const { data: insertedRow } = await supabase
-              .from("wallets")
-              .insert(accountToRow(def, uid))
-              .select()
-              .single();
-            if (insertedRow) {
-              inserted.push(rowToAccount(insertedRow));
-            }
+        // Build combined category list (deduplicating by name+type so shared defaults win):
+        const allCatsRaw = categoriesRes.data ?? [];
+        const uniqueCatMap = new Map<string, any>();
+        allCatsRaw.forEach((c: any) => {
+          const key = catKey(c.name, !!c.is_income);
+          if (!uniqueCatMap.has(key) || c.user_id === null) {
+            uniqueCatMap.set(key, c);
           }
-          accounts = inserted;
+        });
+
+        const uniqueCatsRaw = Array.from(uniqueCatMap.values());
+
+        const dbCategories: CategoryRow[] = uniqueCatsRaw.map((c: any) => {
+          const isDefault = c.user_id === null;
+          const isEnabled = isDefault
+            ? (settingsMap.has(c.id) ? settingsMap.get(c.id)! : true)
+            : (c.is_enabled ?? true);
+          return {
+            id: c.id,
+            name: c.name,
+            is_income: c.is_income,
+            is_default: c.is_default,
+            is_enabled: isEnabled,
+            user_id: c.user_id ?? null,
+          };
+        });
+
+        setCategories(dbCategories);
+
+        // build category maps from ALL categories (shared defaults + user's own)
+        const catIdToName: Record<string, string> = {};
+        const cache = new Map<string, string>();
+        allCatsRaw.forEach((c: any) => {
+          catIdToName[c.id] = c.name;
+          const key = catKey(c.name, !!c.is_income);
+          // shared default (user_id=null) wins — we never want to create a per-user copy
+          if (!cache.has(key) || c.user_id === null) cache.set(key, c.id);
+        });
+        catCacheRef.current = cache;
+
+
+        // wallets → accounts
+        const dbWallets = (walletsRes.data ?? []).map(rowToAccount);
+
+        // Merge DB wallets with DEFAULT_ACCOUNTS for in-memory frontend display
+        // Old users with existing DB wallets won't get duplicate default cards!
+        const mergedAccounts: Account[] = [...dbWallets];
+
+        for (const def of DEFAULT_ACCOUNTS) {
+          const alreadyExists = dbWallets.some((w) => {
+            if (w.id === def.id || (w.providerId && def.providerId && w.providerId === def.providerId)) {
+              return true;
+            }
+            const wName = w.name.trim().toLowerCase();
+            const defName = def.name.trim().toLowerCase();
+            if (wName === defName) return true;
+            if (w.type === def.type && (w.type === "cash" || w.type === "bank")) return true;
+            return false;
+          });
+
+          if (!alreadyExists) {
+            mergedAccounts.push({ ...def });
+          }
         }
 
         // transactions
         const transactions = (transactionsRes.data ?? []).map((r: any) =>
-          rowToTransaction(r, catIdToName)
+          rowToTransaction(r, catIdToName),
         );
 
         // transfers
@@ -325,16 +407,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         const rawIncreases = (loanIncreasesRes.data ?? []) as any[];
 
         const loans: Loan[] = rawLoans.map((lr) => {
-          const pays = rawPayments
-            .filter((p) => p.loan_id === lr.id)
-            .map(rowToLoanPayment);
-          const incs = rawIncreases
-            .filter((i) => i.loan_id === lr.id)
-            .map(rowToLoanIncrease);
+          const pays = rawPayments.filter((p) => p.loan_id === lr.id).map(rowToLoanPayment);
+          const incs = rawIncreases.filter((i) => i.loan_id === lr.id).map(rowToLoanIncrease);
           return rowToLoan(lr, pays, incs);
         });
 
-        setData({ accounts, transactions, transfers, loans });
+        setData({ accounts: mergedAccounts, transactions, transfers, loans });
       } catch (err) {
         console.error("Failed to load data from Supabase", err);
       } finally {
@@ -342,7 +420,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /* ── category helper (name → id lookup, creating if needed) ── */
@@ -350,30 +430,120 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const resolveCategoryId = useCallback(
     async (categoryName: string, isIncome: boolean): Promise<string | null> => {
       if (!userId) return null;
-      // Try to find existing category
-      const { data: existing } = await supabase
-        .from("categories")
-        .select("id")
-        .eq("name", categoryName)
-        .or(`user_id.is.null,user_id.eq.${userId}`)
-        .maybeSingle();
-      if (existing) return existing.id;
+      const name = categoryName.trim();
+      if (!name) return null;
 
-      // Create user-level category
-      const { data: created } = await supabase
+      const key = catKey(name, isIncome);
+
+      // 1) in-memory cache (built at load + updated on every create)
+      const cached = catCacheRef.current.get(key);
+      if (cached) return cached;
+
+      // 2) look up in DB — prefer shared default (user_id IS NULL), then user-owned
+      //    NEVER create a per-user copy of a default category.
+      const { data: existing, error: findErr } = await supabase
+        .from("categories")
+        .select("id,user_id")
+        .ilike("name", name)
+        .eq("is_income", isIncome)
+        .or(`user_id.is.null,user_id.eq.${userId}`);
+
+      if (findErr) {
+        console.error("resolveCategoryId lookup failed", findErr);
+        return null;
+      }
+
+      if (existing && existing.length > 0) {
+        // prefer the shared default row (user_id = null), else user's own
+        const defaultRow = existing.find((c: any) => c.user_id === null);
+        const id = (defaultRow ?? existing[0]).id as string;
+        catCacheRef.current.set(key, id);
+        return id;
+      }
+
+      // 3) genuinely new (not a default) → create user-owned category
+      const { data: created, error: createErr } = await supabase
         .from("categories")
         .insert({
-          name: categoryName,
+          name,
           is_income: isIncome,
           is_default: false,
+          is_enabled: true,
           user_id: userId,
         })
-        .select("id")
+        .select("id,name,is_income,is_default,is_enabled,user_id")
         .single();
-      return created?.id ?? null;
+
+      if (createErr || !created) {
+        console.error("resolveCategoryId create failed", createErr);
+        return null;
+      }
+
+      catCacheRef.current.set(key, created.id);
+      setCategories((prev) =>
+        prev.some((c) => c.id === created.id)
+          ? prev
+          : [
+              ...prev,
+              {
+                id: created.id,
+                name: created.name,
+                is_income: created.is_income,
+                is_default: created.is_default,
+                is_enabled: created.is_enabled ?? true,
+                user_id: userId,
+              },
+            ],
+      );
+      return created.id;
     },
     [userId],
   );
+
+
+  /* ─── wallet auto-create (for virtual / provider-only accounts) ── */
+
+  /**
+   * If `accountId` is a virtual account (provider UUID, no wallet row yet),
+   * insert a wallet row and return the new wallet ID.
+   * If it's already a real wallet, return the same ID.
+   */
+  const ensureWallet = useCallback(
+    async (accountId: string): Promise<string> => {
+      if (!userId) return accountId;
+
+      const acct = data.accounts.find((a) => a.id === accountId);
+      if (!acct) return accountId;
+
+      // Check if this ID is a real wallet (exists in DB wallets table)
+      const { data: existing } = await supabase
+        .from("wallets")
+        .select("id")
+        .eq("id", accountId)
+        .maybeSingle();
+
+      if (existing) return accountId;
+
+      // Virtual account (no DB row yet) → create wallet row in DB upon first entry
+      const { data: newRow } = await supabase
+        .from("wallets")
+        .insert(accountToRow({ ...acct, id: "" }, userId))
+        .select()
+        .single();
+
+      if (!newRow) return accountId;
+
+      const created = rowToAccount(newRow);
+      // Update state: replace virtual placeholder with real wallet
+      patch((prev) => ({
+        ...prev,
+        accounts: prev.accounts.map((a) => (a.id === accountId ? created : a)),
+      }));
+      return created.id;
+    },
+    [userId, data.accounts, patch],
+  );
+
 
   /* ─── CRUD ──────────────────────────────────────────────── */
 
@@ -382,15 +552,16 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (!userId) return;
       (async () => {
         try {
-          const walletId =
+          const rawWalletId =
             data.accounts.find((a) => a.id === t.accountId)?.id ??
             data.accounts.find(
-              (a) =>
-                a.type === t.accountId ||
-                a.name.toLowerCase() === t.accountId.toLowerCase()
+              (a) => a.type === t.accountId || a.name.toLowerCase() === t.accountId.toLowerCase(),
             )?.id ??
             data.accounts[0]?.id ??
             t.accountId;
+
+          // Auto-create wallet if it's a virtual provider account
+          const walletId = await ensureWallet(rawWalletId);
 
           const txData = { ...t, accountId: walletId };
           const catId = await resolveCategoryId(t.category, t.type === "income");
@@ -419,7 +590,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [userId, data.accounts, patch, resolveCategoryId],
+    [userId, data.accounts, patch, resolveCategoryId, ensureWallet],
   );
 
   const updateTransaction = useCallback(
@@ -427,15 +598,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (!userId) return;
       (async () => {
         try {
-          const walletId =
+          const rawWalletId =
             data.accounts.find((a) => a.id === t.accountId)?.id ??
             data.accounts.find(
-              (a) =>
-                a.type === t.accountId ||
-                a.name.toLowerCase() === t.accountId.toLowerCase()
+              (a) => a.type === t.accountId || a.name.toLowerCase() === t.accountId.toLowerCase(),
             )?.id ??
             data.accounts[0]?.id ??
             t.accountId;
+
+          const walletId = await ensureWallet(rawWalletId);
 
           const catId = await resolveCategoryId(t.category, t.type === "income");
           const { error } = await supabase
@@ -460,7 +631,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
             patch((d) => ({
               ...d,
               transactions: d.transactions.map((x) =>
-                x.id === id ? { ...x, ...t, accountId: walletId } : x
+                x.id === id ? { ...x, ...t, accountId: walletId } : x,
               ),
             }));
           }
@@ -469,7 +640,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [userId, data.accounts, patch, resolveCategoryId],
+    [userId, data.accounts, patch, resolveCategoryId, ensureWallet],
   );
 
   const deleteTransaction = useCallback(
@@ -495,9 +666,14 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (!userId) return;
       (async () => {
         try {
+          // Auto-create wallets if they are virtual provider accounts
+          const fromId = await ensureWallet(t.fromAccountId);
+          const toId = await ensureWallet(t.toAccountId);
+          const resolved = { ...t, fromAccountId: fromId, toAccountId: toId };
+
           const { data: row } = await supabase
             .from("transfers")
-            .insert(transferToRow(t, userId))
+            .insert(transferToRow(resolved, userId))
             .select()
             .single();
           if (row) {
@@ -511,7 +687,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [userId, patch],
+    [userId, patch, ensureWallet],
   );
 
   const deleteTransfer = useCallback(
@@ -561,25 +737,44 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (!userId) return;
       (async () => {
         try {
-          const { error } = await supabase
+          const { data: existing } = await supabase
             .from("wallets")
-            .update({
-              name: a.name,
-              icon: a.icon,
-              color: a.color,
-              type: a.type,
-              opening_balance: a.openingBalance,
-              is_default: a.isDefault ?? false,
-provider_id: PROVIDER_MAP[a.type] ?? null,
-            })
-            .eq("id", id);
-          if (!error) {
-            patch((d) => ({
-              ...d,
-              accounts: d.accounts.map((x) =>
-                x.id === id ? { ...x, ...a } : x
-              ),
-            }));
+            .select("id")
+            .eq("id", id)
+            .maybeSingle();
+
+          if (!existing) {
+            const { data: row } = await supabase
+              .from("wallets")
+              .insert(accountToRow({ ...a, id: "" }, userId))
+              .select()
+              .single();
+            if (row) {
+              const created = rowToAccount(row);
+              patch((d) => ({
+                ...d,
+                accounts: d.accounts.map((x) => (x.id === id ? created : x)),
+              }));
+            }
+          } else {
+            const { error } = await supabase
+              .from("wallets")
+              .update({
+                name: a.name,
+                icon: a.icon,
+                color: a.color,
+                type: a.type,
+                opening_balance: a.openingBalance,
+                is_default: a.isDefault ?? false,
+                provider_id: a.providerId ?? PROVIDER_MAP[a.type] ?? null,
+              })
+              .eq("id", id);
+            if (!error) {
+              patch((d) => ({
+                ...d,
+                accounts: d.accounts.map((x) => (x.id === id ? { ...x, ...a } : x)),
+              }));
+            }
           }
         } catch (err) {
           console.error("updateAccount failed", err);
@@ -607,9 +802,7 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
             ...d,
             accounts: d.accounts.filter((x) => x.id !== id),
             transactions: d.transactions.filter((x) => x.accountId !== id),
-            transfers: d.transfers.filter(
-              (x) => x.fromAccountId !== id && x.toAccountId !== id
-            ),
+            transfers: d.transfers.filter((x) => x.fromAccountId !== id && x.toAccountId !== id),
           }));
         } catch (err) {
           console.error("deleteAccount failed", err);
@@ -620,9 +813,7 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
   );
 
   const addLoan = useCallback(
-    (
-      l: Omit<Loan, "id" | "createdAt" | "updatedAt" | "payments" | "status">
-    ) => {
+    (l: Omit<Loan, "id" | "createdAt" | "updatedAt" | "payments" | "status">) => {
       if (!userId) return;
       (async () => {
         try {
@@ -630,10 +821,13 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
           const now = new Date().toISOString();
           const loanDate = l.loanDate;
 
+          // 0. ensure wallet exists
+          const walletId = await ensureWallet(l.accountId);
+
           // 1. insert loan
           const { data: loanRow } = await supabase
             .from("loans")
-            .insert(loanToRow(l, userId))
+            .insert({ ...loanToRow(l, userId), wallet_id: walletId })
             .select()
             .single();
           if (!loanRow) return;
@@ -646,12 +840,10 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
           const { data: txRow } = await supabase
             .from("transactions")
             .insert({
-              title: isReceivable
-                ? `Loan to ${l.contactName}`
-                : `Loan from ${l.contactName}`,
+              title: isReceivable ? `Loan to ${l.contactName}` : `Loan from ${l.contactName}`,
               amount: l.totalAmount,
               is_income: !isReceivable,
-              wallet_id: l.accountId,
+              wallet_id: walletId,
               category_id: catId,
               transaction_date: loanDate,
               user_id: userId,
@@ -666,6 +858,7 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
           patch((d) => {
             const newLoan: Loan = {
               ...l,
+              accountId: walletId,
               id: loanRow.id,
               payments: [],
               increases: [],
@@ -677,12 +870,10 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
               ? rowToTransaction(txRow, catMap)
               : {
                   id: "temp",
-                  title: isReceivable
-                    ? `Loan to ${l.contactName}`
-                    : `Loan from ${l.contactName}`,
+                  title: isReceivable ? `Loan to ${l.contactName}` : `Loan from ${l.contactName}`,
                   amount: l.totalAmount,
                   type: (isReceivable ? "expense" : "income") as TxType,
-                  accountId: l.accountId,
+                  accountId: walletId,
                   category: initCategory,
                   date: loanDate,
                   createdAt: now,
@@ -699,14 +890,11 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
         }
       })();
     },
-    [userId, patch, resolveCategoryId],
+    [userId, patch, resolveCategoryId, ensureWallet],
   );
 
   const updateLoan = useCallback(
-    (
-      id: string,
-      l: Partial<Omit<Loan, "id" | "createdAt" | "payments">>
-    ) => {
+    (id: string, l: Partial<Omit<Loan, "id" | "createdAt" | "payments">>) => {
       if (!userId) return;
       (async () => {
         try {
@@ -734,15 +922,13 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
           const catId = await resolveCategoryId(initCat, !isReceivable);
 
           const initTx = data.transactions.find(
-            (tx) => tx.loanId === id && !tx.loanPaymentId && !tx.loanIncreaseId
+            (tx) => tx.loanId === id && !tx.loanPaymentId && !tx.loanIncreaseId,
           );
           if (initTx) {
             await supabase
               .from("transactions")
               .update({
-                title: isReceivable
-                  ? `Loan to ${contact}`
-                  : `Loan from ${contact}`,
+                title: isReceivable ? `Loan to ${contact}` : `Loan from ${contact}`,
                 amount: l.totalAmount ?? initTx.amount,
                 is_income: !isReceivable,
                 wallet_id: l.accountId ?? initTx.accountId,
@@ -754,15 +940,13 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
 
           patch((d) => {
             const updatedLoans = d.loans.map((x) =>
-              x.id === id ? { ...x, ...l, updatedAt: now } : x
+              x.id === id ? { ...x, ...l, updatedAt: now } : x,
             );
             const updatedTransactions = d.transactions.map((tx) => {
               if (tx.loanId === id && !tx.loanPaymentId && !tx.loanIncreaseId) {
                 return {
                   ...tx,
-                  title: isReceivable
-                    ? `Loan to ${contact}`
-                    : `Loan from ${contact}`,
+                  title: isReceivable ? `Loan to ${contact}` : `Loan from ${contact}`,
                   amount: l.totalAmount ?? tx.amount,
                   type: (isReceivable ? "expense" : "income") as TxType,
                   accountId: l.accountId ?? tx.accountId,
@@ -815,10 +999,13 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
           const targetLoan = data.loans.find((l) => l.id === loanId);
           if (!targetLoan) return;
 
+          // 0. ensure wallet exists
+          const accountId = await ensureWallet(p.accountId || targetLoan.accountId);
+
           // 1. insert payment
           const { data: payRow } = await supabase
             .from("loan_payments")
-            .insert(loanPaymentToRow(p, loanId, userId))
+            .insert({ ...loanPaymentToRow(p, loanId, userId), account_id: accountId })
             .select()
             .single();
           if (!payRow) return;
@@ -830,7 +1017,7 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
             isCompleted,
             newPaid,
             targetLoan.totalAmount,
-            targetLoan.dueDate
+            targetLoan.dueDate,
           );
 
           // 2. update loan
@@ -846,7 +1033,6 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
 
           // 3. insert transaction
           const isReceivable = targetLoan.direction === "receivable";
-          const accountId = p.accountId || targetLoan.accountId;
           const txCategory = isReceivable ? "Loan Repayment" : "Loan Payment";
           const catId = await resolveCategoryId(txCategory, isReceivable);
 
@@ -880,7 +1066,7 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
                     status: newStatus,
                     updatedAt: new Date().toISOString(),
                   }
-                : loan
+                : loan,
             );
             const newTx = txRow
               ? rowToTransaction(txRow, catMap)
@@ -909,7 +1095,7 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
         }
       })();
     },
-    [userId, patch, data.loans, resolveCategoryId],
+    [userId, patch, data.loans, resolveCategoryId, ensureWallet],
   );
 
   const deleteLoanPayment = useCallback(
@@ -930,7 +1116,7 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
             isCompleted,
             newPaid,
             targetLoan.totalAmount,
-            targetLoan.dueDate
+            targetLoan.dueDate,
           );
 
           // 2. update loan
@@ -945,10 +1131,7 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
             .eq("id", loanId);
 
           // 3. delete transaction
-          await supabase
-            .from("transactions")
-            .delete()
-            .eq("loan_payment_id", paymentId);
+          await supabase.from("transactions").delete().eq("loan_payment_id", paymentId);
 
           patch((d) => {
             const updatedLoans = d.loans.map((loan) =>
@@ -959,14 +1142,12 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
                     status: newStatus,
                     updatedAt: new Date().toISOString(),
                   }
-                : loan
+                : loan,
             );
             return {
               ...d,
               loans: updatedLoans,
-              transactions: d.transactions.filter(
-                (tx) => tx.loanPaymentId !== paymentId
-              ),
+              transactions: d.transactions.filter((tx) => tx.loanPaymentId !== paymentId),
             };
           });
         } catch (err) {
@@ -985,27 +1166,22 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
           const targetLoan = data.loans.find((l) => l.id === loanId);
           if (!targetLoan) return;
 
+          // 0. ensure wallet exists
+          const accountId = await ensureWallet(inc.accountId || targetLoan.accountId);
+
           // 1. insert increase
           const { data: incRow } = await supabase
             .from("loan_increases")
-            .insert(loanIncreaseToRow(inc, loanId, userId))
+            .insert({ ...loanIncreaseToRow(inc, loanId, userId), account_id: accountId })
             .select()
             .single();
           if (!incRow) return;
 
-          const newIncreases = [
-            ...(targetLoan.increases ?? []),
-            rowToLoanIncrease(incRow),
-          ];
+          const newIncreases = [...(targetLoan.increases ?? []), rowToLoanIncrease(incRow)];
           const newTotal = targetLoan.totalAmount + inc.amount;
           const paid = targetLoan.payments.reduce((s, x) => s + x.amount, 0);
           const isCompleted = paid >= newTotal;
-          const newStatus = computeLoanStatus(
-            isCompleted,
-            paid,
-            newTotal,
-            targetLoan.dueDate
-          );
+          const newStatus = computeLoanStatus(isCompleted, paid, newTotal, targetLoan.dueDate);
 
           // 2. update loan total
           await supabase
@@ -1020,7 +1196,6 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
 
           // 3. insert transaction
           const isReceivable = targetLoan.direction === "receivable";
-          const accountId = inc.accountId || targetLoan.accountId;
           const txCategory = isReceivable ? "Loan Given" : "Loan Taken";
           const catId = await resolveCategoryId(txCategory, !isReceivable);
 
@@ -1055,7 +1230,7 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
                     status: newStatus,
                     updatedAt: new Date().toISOString(),
                   }
-                : loan
+                : loan,
             );
             const newTx = txRow
               ? rowToTransaction(txRow, catMap)
@@ -1084,7 +1259,7 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
         }
       })();
     },
-    [userId, patch, data.loans, resolveCategoryId],
+    [userId, patch, data.loans, resolveCategoryId, ensureWallet],
   );
 
   const deleteLoanIncrease = useCallback(
@@ -1095,28 +1270,17 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
           const targetLoan = data.loans.find((l) => l.id === loanId);
           if (!targetLoan) return;
 
-          const targetIncrease = targetLoan.increases?.find(
-            (inc) => inc.id === increaseId
-          );
+          const targetIncrease = targetLoan.increases?.find((inc) => inc.id === increaseId);
           if (!targetIncrease) return;
 
           // 1. delete increase
           await supabase.from("loan_increases").delete().eq("id", increaseId);
 
-          const newIncreases =
-            targetLoan.increases?.filter((inc) => inc.id !== increaseId) ?? [];
-          const newTotal = Math.max(
-            0,
-            targetLoan.totalAmount - targetIncrease.amount
-          );
+          const newIncreases = targetLoan.increases?.filter((inc) => inc.id !== increaseId) ?? [];
+          const newTotal = Math.max(0, targetLoan.totalAmount - targetIncrease.amount);
           const paid = targetLoan.payments.reduce((s, x) => s + x.amount, 0);
           const isCompleted = paid >= newTotal;
-          const newStatus = computeLoanStatus(
-            isCompleted,
-            paid,
-            newTotal,
-            targetLoan.dueDate
-          );
+          const newStatus = computeLoanStatus(isCompleted, paid, newTotal, targetLoan.dueDate);
 
           // 2. update loan total
           await supabase
@@ -1130,10 +1294,7 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
             .eq("id", loanId);
 
           // 3. delete transaction
-          await supabase
-            .from("transactions")
-            .delete()
-            .eq("loan_increase_id", increaseId);
+          await supabase.from("transactions").delete().eq("loan_increase_id", increaseId);
 
           patch((d) => {
             const updatedLoans = d.loans.map((loan) =>
@@ -1145,14 +1306,12 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
                     status: newStatus,
                     updatedAt: new Date().toISOString(),
                   }
-                : loan
+                : loan,
             );
             return {
               ...d,
               loans: updatedLoans,
-              transactions: d.transactions.filter(
-                (tx) => tx.loanIncreaseId !== increaseId
-              ),
+              transactions: d.transactions.filter((tx) => tx.loanIncreaseId !== increaseId),
             };
           });
         } catch (err) {
@@ -1211,16 +1370,16 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
 
           // insert transfers
           for (const tr of next.transfers) {
-            await supabase
-              .from("transfers")
-              .insert(transferToRow(
+            await supabase.from("transfers").insert(
+              transferToRow(
                 {
                   ...tr,
                   fromAccountId: walletIdMap[tr.fromAccountId] ?? tr.fromAccountId,
                   toAccountId: walletIdMap[tr.toAccountId] ?? tr.toAccountId,
                 },
-                userId
-              ));
+                userId,
+              ),
+            );
           }
 
           // insert loans
@@ -1237,21 +1396,13 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
             for (const pay of loan.payments) {
               await supabase
                 .from("loan_payments")
-                .insert(loanPaymentToRow(
-                  pay,
-                  loanRow.id,
-                  userId
-                ));
+                .insert(loanPaymentToRow(pay, loanRow.id, userId));
             }
             // insert loan increases
             for (const inc of loan.increases ?? []) {
               await supabase
                 .from("loan_increases")
-                .insert(loanIncreaseToRow(
-                  inc,
-                  loanRow.id,
-                  userId
-                ));
+                .insert(loanIncreaseToRow(inc, loanRow.id, userId));
             }
           }
 
@@ -1283,12 +1434,223 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
     })();
   }, [userId]);
 
+  /* ─── category CRUD ─────────────────────────────────────── */
+
+  const addCategory = useCallback(
+    async (name: string, isIncome: boolean) => {
+      if (!userId) return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
+
+      // Guard: same name + type already exists (locally — including shared defaults)
+      const key = catKey(trimmed, isIncome);
+      if (
+        catCacheRef.current.has(key) ||
+        categories.some((c) => catKey(c.name, c.is_income) === key)
+      ) {
+        console.warn("addCategory skipped — category already exists:", trimmed);
+        return;
+      }
+
+      // User-owned category only — never duplicate a default
+      const { data, error } = await supabase
+        .from("categories")
+        .insert({
+          name: trimmed,
+          is_income: isIncome,
+          is_default: false,
+          is_enabled: true,
+          user_id: userId,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("addCategory failed", error);
+        return;
+      }
+      if (data) {
+        catCacheRef.current.set(key, data.id);
+        setCategories((prev) => [
+          ...prev,
+          {
+            id: data.id,
+            name: data.name,
+            is_income: data.is_income,
+            is_default: data.is_default,
+            is_enabled: data.is_enabled ?? true,
+            user_id: userId,
+          },
+        ]);
+      }
+    },
+    [userId, categories],
+  );
+
+
+  const updateCategory = useCallback(
+    async (id: string, name: string) => {
+      if (!userId) return;
+      const cat = categories.find((c) => c.id === id);
+      // Only user-owned (non-default) categories can be renamed
+      if (!cat || cat.is_default || cat.user_id === null) return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
+
+      const { error } = await supabase
+        .from("categories")
+        .update({ name: trimmed, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("user_id", userId);
+
+      if (error) {
+        console.error("updateCategory failed", error);
+        return;
+      }
+      // keep the dedupe cache in sync with the new name
+      catCacheRef.current.delete(catKey(cat.name, cat.is_income));
+      catCacheRef.current.set(catKey(trimmed, cat.is_income), id);
+      setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, name: trimmed } : c)));
+    },
+    [userId, categories],
+  );
+
+  const deleteCategory = useCallback(
+    async (id: string) => {
+      if (!userId) return;
+
+      const cat = categories.find((c) => c.id === id);
+      // Only user-owned (non-default) categories can be deleted
+      if (!cat || cat.is_default || cat.user_id === null) return;
+
+      // Clean up any category_settings rows for this category (safety)
+      await supabase
+        .from("category_settings")
+        .delete()
+        .eq("category_id", id)
+        .eq("user_id", userId);
+
+      // Unlink any transactions still referencing this category to avoid the
+      // FK constraint (transactions_category_id_fkey) from blocking the delete.
+      const { error: unlinkError } = await supabase
+        .from("transactions")
+        .update({ category_id: null })
+        .eq("category_id", id)
+        .eq("user_id", userId);
+
+      if (unlinkError) {
+        console.error("deleteCategory – unlink transactions failed", unlinkError);
+        throw unlinkError;
+      }
+
+      const { error } = await supabase
+        .from("categories")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", userId);
+      if (error) {
+        console.error("deleteCategory failed", error);
+        throw error;
+      }
+      catCacheRef.current.delete(catKey(cat.name, cat.is_income));
+      setCategories((prev) => prev.filter((c) => c.id !== id));
+
+      // Clear the category label on any local transaction that had this category
+      patch((d) => ({
+        ...d,
+        transactions: d.transactions.map((t) =>
+          t.category === cat.name ? { ...t, category: "" } : t,
+        ),
+      }));
+    },
+    [userId, categories, patch],
+  );
+
+  const toggleCategory = useCallback(
+    async (id: string, enabled: boolean) => {
+      if (!userId) return;
+
+      const cat = categories.find((c) => c.id === id);
+      if (!cat) return;
+
+      if (cat.user_id === null) {
+        // ── Default category: use category_settings table ──────────────
+        // A row in category_settings means the category is disabled.
+        // Enabling → delete the row. Disabling → upsert with is_enabled=false.
+        if (enabled) {
+          const { error } = await supabase
+            .from("category_settings")
+            .delete()
+            .eq("user_id", userId)
+            .eq("category_id", id);
+          if (error) {
+            console.error("toggleCategory (default→enable) failed", error);
+            return;
+          }
+        } else {
+          const { error } = await supabase
+            .from("category_settings")
+            .upsert(
+              { user_id: userId, category_id: id, is_enabled: false },
+              { onConflict: "user_id,category_id" },
+            );
+          if (error) {
+            console.error("toggleCategory (default→disable) failed", error);
+            return;
+          }
+        }
+      } else {
+        // ── User-owned category: toggle categories.is_enabled directly ──
+        const { error } = await supabase
+          .from("categories")
+          .update({ is_enabled: enabled, updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .eq("user_id", userId);
+
+        if (error) {
+          console.error("toggleCategory (user-owned) failed", error);
+          return;
+        }
+      }
+
+      // Update local state for both cases
+      setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, is_enabled: enabled } : c)));
+    },
+    [userId, categories],
+  );
+
   /* ─── memoised value ────────────────────────────────────── */
+
+  const incomeCategories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          categories
+            .filter((c) => c.is_income && c.is_enabled)
+            .map((c) => c.name),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [categories],
+  );
+  const expenseCategories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          categories
+            .filter((c) => !c.is_income && c.is_enabled)
+            .map((c) => c.name),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [categories],
+  );
 
   const value = useMemo<FinanceContextValue>(
     () => ({
       ...data,
       ready,
+      categories,
+      incomeCategories,
+      expenseCategories,
       addTransaction,
       updateTransaction,
       deleteTransaction,
@@ -1306,10 +1668,17 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
       deleteLoanIncrease,
       replaceAll,
       resetAll,
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      toggleCategory,
     }),
     [
       data,
       ready,
+      categories,
+      incomeCategories,
+      expenseCategories,
       addTransaction,
       updateTransaction,
       deleteTransaction,
@@ -1327,14 +1696,14 @@ provider_id: PROVIDER_MAP[a.type] ?? null,
       deleteLoanIncrease,
       replaceAll,
       resetAll,
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      toggleCategory,
     ],
   );
 
-  return (
-    <FinanceContext.Provider value={value}>
-      {children}
-    </FinanceContext.Provider>
-  );
+  return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 }
 
 export function useFinance() {

@@ -13,7 +13,7 @@ import { LOAN_TYPES } from "./utils";
 import { toast } from "sonner";
 
 export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; onOpenChange: (v: boolean) => void; loan?: Loan }) {
-  const { accounts, addLoan, updateLoan } = useFinance();
+  const { accounts, addLoan, updateLoan, addTransaction } = useFinance();
   const b = useBalances();
   const today = new Date().toISOString().slice(0, 10);
 
@@ -25,6 +25,7 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
     loanType: loan?.loanType ?? "Personal Loan",
     loanDate: loan?.loanDate ?? today,
     dueDate: loan?.dueDate ?? "",
+    isSpecialNumber: true as boolean,
   });
 
   const amt = parseFloat(form.totalAmount) || 0;
@@ -41,10 +42,16 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
         loanType: loan?.loanType ?? "Personal Loan",
         loanDate: loan?.loanDate ?? today,
         dueDate: loan?.dueDate ?? "",
+        isSpecialNumber: true,
       });
     }
     onOpenChange(v);
   };
+
+  const selectedAccount = accounts.find((a) => a.id === form.accountId);
+  const isMfsAccount = selectedAccount?.type === "mfs";
+  const showSpecialNumber = form.direction === "receivable" && isMfsAccount;
+  const specialCharge = showSpecialNumber && !form.isSpecialNumber ? 5 : 0;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +61,7 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
     if (!form.accountId) { toast.error("Select an account"); return; }
 
     if (form.direction === "receivable") {
-      if (selectedBalance < amt) {
+      if (selectedBalance < amt + specialCharge) {
         const accName = accounts.find((a) => a.id === form.accountId)?.name ?? "wallet";
         toast.error(`Insufficient balance in ${accName} (${b.money(selectedBalance)})`);
         return;
@@ -76,6 +83,16 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
       toast.success("Loan updated");
     } else {
       addLoan(payload);
+      if (specialCharge > 0) {
+        addTransaction({
+          type: "expense",
+          amount: specialCharge,
+          date: form.loanDate,
+          accountId: form.accountId,
+          category: "Transfer Charge",
+          title: `Special Number Charge — ${selectedAccount?.name ?? ""}`,
+        });
+      }
       toast.success("Loan added");
     }
     onOpenChange(false);
@@ -115,12 +132,37 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
               {accounts.map((a) => (<option key={a.id} value={a.id}>{a.name} — {b.money(b.balances.get(a.id) ?? 0)}</option>))}
             </select>
             {form.direction === "receivable" && (
-              <p className={cn("text-xs", selectedBalance >= amt || amt <= 0 ? "text-muted-foreground" : "font-semibold text-danger")}>
+              <p className={cn("text-xs", selectedBalance >= amt + specialCharge || amt <= 0 ? "text-muted-foreground" : "font-semibold text-danger")}>
                 Wallet balance: {b.money(selectedBalance)}
-                {selectedBalance < amt && amt > 0 && <> — insufficient for this loan</>}
+                {selectedBalance < amt + specialCharge && amt > 0 && <> — insufficient for this loan{specialCharge > 0 ? ` + ${specialCharge} Tk charge` : ""}</>}
               </p>
             )}
           </div>
+          {showSpecialNumber && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-indigo-600">As a Special Number</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(["Yes", "No"] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setForm({ ...form, isSpecialNumber: opt === "Yes" })}
+                    className={cn(
+                      "rounded-xl border py-2.5 text-sm font-semibold transition",
+                      (opt === "Yes" ? form.isSpecialNumber : !form.isSpecialNumber)
+                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-600"
+                        : "border-border text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+              {!form.isSpecialNumber && (
+                <p className="text-xs text-muted-foreground">5 Tk charge will be debited</p>
+              )}
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase text-muted-foreground">Loan Category</Label>
             <select value={form.loanType} onChange={(e) => setForm({ ...form, loanType: e.target.value })} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">

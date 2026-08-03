@@ -16,7 +16,6 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/constants";
 import type { Transaction } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +38,7 @@ interface Props {
 }
 
 export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
-  const { accounts, addTransaction, updateTransaction } = useFinance();
+  const { accounts, incomeCategories, expenseCategories, addTransaction, updateTransaction } = useFinance();
   const b = useBalances();
 
   const form = useForm<FormValues>({
@@ -55,7 +54,7 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
   });
 
   const type = form.watch("type");
-  const categories = type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const categories = type === "income" ? incomeCategories : expenseCategories;
 
   useEffect(() => {
     if (!open) return;
@@ -76,6 +75,11 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
 
   const onSubmit = form.handleSubmit((raw) => {
     const values = schema.parse(raw);
+
+    if (!values.accountId) {
+      toast.error("Please add a wallet in the Wallets page first.");
+      return;
+    }
 
     if (values.type === "expense") {
       const currentBal = b.balances.get(values.accountId) ?? 0;
@@ -117,7 +121,7 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
                 key={t}
                 onClick={() => {
                   form.setValue("type", t);
-                  form.setValue("category", t === "income" ? INCOME_CATEGORIES[0] : EXPENSE_CATEGORIES[0]);
+                  form.setValue("category", t === "income" ? (incomeCategories[0] ?? "") : (expenseCategories[0] ?? ""));
                 }}
                 className={cn(
                   "rounded-lg py-2 text-sm font-semibold capitalize transition",
@@ -147,11 +151,15 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
                 className="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
                 {...form.register("accountId")}
               >
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
+                {accounts.length === 0 ? (
+                  <option value="">No wallets — Add a wallet first</option>
+                ) : (
+                  accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))
+                )}
               </select>
             </Field>
 

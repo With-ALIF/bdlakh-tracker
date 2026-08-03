@@ -14,6 +14,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as ChartRouteImport } from './routes/chart'
 import { Route as LoanRouteImport } from './routes/loan'
+import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TransactionsRouteImport } from './routes/transactions'
 import { Route as TransferRouteImport } from './routes/transfer'
@@ -44,6 +45,11 @@ const LoanRoute = LoanRouteImport.update({
   path: '/loan',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NotificationsRoute = NotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/calendar': typeof CalendarRoute
   '/chart': typeof ChartRoute
   '/loan': typeof LoanRoute
+  '/notifications': typeof NotificationsRoute
   '/settings': typeof SettingsRoute
   '/transactions': typeof TransactionsRoute
   '/transfer': typeof TransferRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/calendar': typeof CalendarRoute
   '/chart': typeof ChartRoute
   '/loan': typeof LoanRoute
+  '/notifications': typeof NotificationsRoute
   '/settings': typeof SettingsRoute
   '/transactions': typeof TransactionsRoute
   '/transfer': typeof TransferRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/calendar': typeof CalendarRoute
   '/chart': typeof ChartRoute
   '/loan': typeof LoanRoute
+  '/notifications': typeof NotificationsRoute
   '/settings': typeof SettingsRoute
   '/transactions': typeof TransactionsRoute
   '/transfer': typeof TransferRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/chart'
     | '/loan'
+    | '/notifications'
     | '/settings'
     | '/transactions'
     | '/transfer'
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/chart'
     | '/loan'
+    | '/notifications'
     | '/settings'
     | '/transactions'
     | '/transfer'
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/chart'
     | '/loan'
+    | '/notifications'
     | '/settings'
     | '/transactions'
     | '/transfer'
@@ -141,6 +153,7 @@ export interface RootRouteChildren {
   CalendarRoute: typeof CalendarRoute
   ChartRoute: typeof ChartRoute
   LoanRoute: typeof LoanRoute
+  NotificationsRoute: typeof NotificationsRoute
   SettingsRoute: typeof SettingsRoute
   TransactionsRoute: typeof TransactionsRoute
   TransferRoute: typeof TransferRoute
@@ -184,6 +197,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoanRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/notifications': {
+      id: '/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof NotificationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -221,6 +241,7 @@ const rootRouteChildren: RootRouteChildren = {
   CalendarRoute: CalendarRoute,
   ChartRoute: ChartRoute,
   LoanRoute: LoanRoute,
+  NotificationsRoute: NotificationsRoute,
   SettingsRoute: SettingsRoute,
   TransactionsRoute: TransactionsRoute,
   TransferRoute: TransferRoute,
