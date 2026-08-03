@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Plus, Pencil, Trash2, Wallet, CircleDollarSign } from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
-import { PageHeader, Panel, StatCard, EmptyState } from "@/components/ui-kit";
+import { PageHeader, Panel, EmptyState } from "@/components/ui-kit";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
 import { ACCOUNT_COLORS, ACCOUNT_ICONS } from "@/constants";
@@ -90,7 +90,7 @@ function WalletsPage() {
     <AppLayout>
       <PageHeader
         title="Wallets"
-        subtitle={`Total balance ${b.money(b.total)}`}
+        subtitle={`${accounts.length} account${accounts.length === 1 ? "" : "s"}`}
         action={
           <Button className="gap-2" onClick={openNew}>
             <Plus className="h-4 w-4" /> New account
@@ -98,8 +98,14 @@ function WalletsPage() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <StatCard label="Total Balance" value={b.money(b.total)} icon={CircleDollarSign} tone="primary" hint={`${accounts.length} account${accounts.length === 1 ? "" : "s"}`} />
+      <div className="card-surface mb-4 flex items-center gap-4 overflow-hidden p-5">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary">
+          <CircleDollarSign className="h-6 w-6" />
+        </span>
+        <div>
+          <p className="text-xs font-semibold uppercase text-muted-foreground">Total Balance</p>
+          <p className="text-2xl font-bold tracking-tight">{b.money(b.total)}</p>
+        </div>
       </div>
 
       {accounts.length === 0 ? (
@@ -107,7 +113,7 @@ function WalletsPage() {
           <EmptyState
             icon={Wallet}
             title="No wallets yet"
-            subtitle="Click 'New account' above to create your first wallet."
+            description="Click 'New account' above to create your first wallet."
           />
         </div>
       ) : (

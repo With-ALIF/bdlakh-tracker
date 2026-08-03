@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import dayjs from "dayjs";
 import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
 import isSameOrBefore from "dayjs/plugin/isSameOrBefore";
-import { Pencil, Trash2, Search, Receipt, ArrowUpDown, FileDown } from "lucide-react";
+import { Pencil, Trash2, Search, Receipt, ArrowUpDown, FileDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
 import { TransactionDialog } from "@/components/TransactionDialog";
 import { ReportDialog } from "@/components/ReportDialog";
@@ -85,6 +85,8 @@ function TransactionsPage() {
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const isFiltered = query !== "" || range !== "all" || type !== "all" || account !== "all" || category !== "all";
 
@@ -94,6 +96,7 @@ function TransactionsPage() {
     setType("all");
     setAccount("all");
     setCategory("all");
+    setPage(1);
   };
 
 
@@ -128,6 +131,12 @@ function TransactionsPage() {
       })
       .sort((a, c) => (sortDesc ? c.date.localeCompare(a.date) : a.date.localeCompare(c.date)));
   }, [transactions, query, range, customFromDate, customToDate, type, account, category, sortDesc]);
+
+  // Reset to page 1 when filters change
+  const resetPage = () => setPage(1);
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   // PDF generation for current filtered transactions
   const generatePDFDirect = async () => {
@@ -177,7 +186,7 @@ function TransactionsPage() {
     <AppLayout>
       <PageHeader
         title="Transactions"
-        subtitle={`${rows.length} record${rows.length === 1 ? "" : "s"}`}
+        subtitle={`${rows.length} transaction${rows.length === 1 ? "" : "s"}`}
         action={
           <div className="flex gap-2">
             <Button variant="outline" className="gap-2" onClick={generatePDFDirect}>
@@ -195,7 +204,7 @@ function TransactionsPage() {
               className="pl-9"
               placeholder="Search title or category"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setPage(1); setQuery(e.target.value); }}
             />
           </div>
 
@@ -203,6 +212,7 @@ function TransactionsPage() {
             <Select
               value={range}
               onValueChange={(v: RangeKey | "custom") => {
+                setPage(1);
                 if (v === "custom") {
                   setCustomRangeOpen(true);
                 } else {
@@ -217,12 +227,12 @@ function TransactionsPage() {
                 {RANGES.map((r) => <SelectItem key={r.key} value={r.key}>{r.label}</SelectItem>)}
               </SelectContent>
             </Select>
-            <select className={selectCls} value={type} onChange={(e) => setType(e.target.value as typeof type)}>
+            <select className={selectCls} value={type} onChange={(e) => { setPage(1); setType(e.target.value as typeof type); }}>
               <option value="all">All types</option>
               <option value="income">Income</option>
               <option value="expense">Expense</option>
             </select>
-            <select className={selectCls} value={account} onChange={(e) => setAccount(e.target.value)}>
+            <select className={selectCls} value={account} onChange={(e) => { setPage(1); setAccount(e.target.value); }}>
               <option value="all">All accounts</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -230,7 +240,7 @@ function TransactionsPage() {
                 </option>
               ))}
             </select>
-            <select className={selectCls} value={category} onChange={(e) => setCategory(e.target.value)}>
+            <select className={selectCls} value={category} onChange={(e) => { setPage(1); setCategory(e.target.value); }}>
               <option value="all">All categories</option>
               {[...incomeCategories, ...expenseCategories]
                 .filter((c, i, arr) => arr.indexOf(c) === i)
@@ -280,7 +290,7 @@ function TransactionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((t) => (
+                {pageRows.map((t) => (
                   <tr key={t.id} className="border-b border-border/60 transition">
                     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                       {dayjs(t.date).format("DD MMM YYYY")}
@@ -335,6 +345,29 @@ function TransactionsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {rows.length > 0 && totalPages > 1 && (
+          <div className="mt-8 flex justify-center items-center gap-4">
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-9"
+              disabled={safePage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm font-medium">Page {safePage} / {totalPages}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-9"
+              disabled={safePage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
         )}
       </Panel>
