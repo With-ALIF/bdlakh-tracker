@@ -46,6 +46,17 @@ export const DIR_CONFIG: Record<LoanDirection, { label: string; color: string }>
   payable: { label: "Payable", color: "text-rose-500 bg-rose-500/10" },
 };
 
+export function normalizePhotoUrl(url: string): string {
+  if (!url) return url;
+  const githubBlobMatch = url.match(
+    /github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)/,
+  );
+  if (githubBlobMatch) {
+    return `https://raw.githubusercontent.com/${githubBlobMatch[1]}/${githubBlobMatch[2]}/${githubBlobMatch[3]}`;
+  }
+  return url;
+}
+
 export function dirLabel(direction: LoanDirection, status: LoanStatus): string {
   if (status === "completed") {
     return direction === "receivable" ? "Received" : "Paid";

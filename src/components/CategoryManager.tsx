@@ -328,7 +328,7 @@ export function CategoryManager({ open, onOpenChange }: CategoryManagerProps) {
                     </p>
                   </div>
 
-                  {/* Toggle */}
+                  {/* Toggle — for all categories */}
                   <button
                     type="button"
                     onClick={() => handleToggle(cat.id, !cat.is_enabled)}

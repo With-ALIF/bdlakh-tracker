@@ -1,0 +1,1 @@
+alter table public.loan_increases add column if not exists is_special_number boolean not null default true;

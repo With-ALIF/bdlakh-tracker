@@ -15,6 +15,7 @@ import { StatCard, Panel, EmptyState, PageHeader } from "@/components/ui-kit";
 import { TransactionDialog } from "@/components/TransactionDialog";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
+import { now } from "@/lib/date";
 import { AccountIcon } from "@/components/AccountIcon";
 import { sumBy } from "@/utils/finance";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,7 @@ function Dashboard() {
   const [open, setOpen] = useState(false);
 
   const stats = useMemo(() => {
-    const daily = transactions.filter((t) => dayjs(t.date).isSame(dayjs(), "day"));
+    const daily = transactions.filter((t) => dayjs(t.date).isSame(now(), "day"));
     return {
       todayIncome: sumBy(daily, "income"),
       todayExpense: sumBy(daily, "expense"),
@@ -42,14 +43,14 @@ function Dashboard() {
   const recent = useMemo(() => {
     return [...transactions]
       .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || "").localeCompare(a.createdAt || ""))
-      .slice(0, 6);
+      .slice(0, 5);
   }, [transactions]);
 
   return (
     <AppLayout>
       <PageHeader
         title="Dashboard"
-        subtitle={dayjs().format("dddd, DD MMMM YYYY")}
+        subtitle={now().format("dddd, DD MMMM YYYY")}
         action={
           <Button onClick={() => setOpen(true)} className="gap-2">
             <Plus className="h-4 w-4" /> Quick add
@@ -57,7 +58,7 @@ function Dashboard() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
         <StatCard label="Daily Income" value={b.money(stats.todayIncome)} icon={TrendingUp} tone="success" />
         <StatCard label="Daily Expense" value={b.money(stats.todayExpense)} icon={TrendingDown} tone="danger" />
         <StatCard label="Final Balance" value={b.money(b.total)} icon={PiggyBank} tone="primary" />

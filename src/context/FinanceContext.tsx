@@ -17,10 +17,12 @@ import type {
   LoanPayment,
   Transaction,
   Transfer,
+  TransferCharge,
   TxType,
 } from "@/types";
 import { DEFAULT_ACCOUNTS, PROVIDER_DEFAULTS } from "@/constants";
 import { supabase } from "@/lib/supabase";
+import { today } from "@/lib/date";
 
 /* ─── helpers ──────────────────────────────────────────────── */
 
@@ -39,7 +41,7 @@ function computeLoanStatus(
   dueDate?: string | null,
 ): Loan["status"] {
   if (isCompleted || paidAmount >= totalAmount) return "completed";
-  if (dueDate && dueDate < new Date().toISOString().slice(0, 10)) return "overdue";
+  if (dueDate && dueDate < today()) return "overdue";
   return "active";
 }
 
@@ -54,6 +56,7 @@ function rowToAccount(r: any): Account {
     type: r.type,
     openingBalance: Number(r.opening_balance),
     isDefault: r.is_default,
+    providerId: r.provider_id ?? undefined,
   };
 }
 
@@ -119,6 +122,7 @@ function rowToLoanIncrease(r: any): LoanIncrease {
     date: r.increase_date,
     amount: Number(r.amount),
     accountId: r.account_id ?? undefined,
+    isSpecialNumber: r.is_special_number ?? true,
   };
 }
 
@@ -201,6 +205,7 @@ function loanIncreaseToRow(inc: Omit<LoanIncrease, "id">, loanId: string, userId
     amount: inc.amount,
     increase_date: inc.date,
     account_id: inc.accountId ?? null,
+    is_special_number: inc.isSpecialNumber ?? true,
     user_id: userId,
   };
 }
@@ -221,6 +226,7 @@ interface FinanceContextValue extends AppData {
   categories: CategoryRow[];
   incomeCategories: string[];
   expenseCategories: string[];
+  transferCharges: TransferCharge[];
   addTransaction: (t: Omit<Transaction, "id" | "createdAt">) => void;
   updateTransaction: (id: string, t: Omit<Transaction, "id" | "createdAt">) => void;
   deleteTransaction: (id: string) => void;
@@ -270,6 +276,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [transferCharges, setTransferCharges] = useState<TransferCharge[]>([]);
   /** name+type → category id, so we never re-INSERT an existing category */
   const catCacheRef = useRef<Map<string, string>>(new Map());
 
@@ -300,7 +307,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           loanPaymentsRes,
           loanIncreasesRes,
           categoriesRes,
+          userCategoriesRes,
           categorySettingsRes,
+          transferChargesRes,
         ] = await Promise.all([
           supabase.from("wallets").select("*").eq("user_id", uid),
           supabase
@@ -313,10 +322,14 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           supabase.from("loans").select("*").eq("user_id", uid),
           supabase.from("loan_payments").select("*").eq("user_id", uid),
           supabase.from("loan_increases").select("*").eq("user_id", uid),
-          // load default (user_id IS NULL) + user-owned categories together
-          supabase.from("categories").select("*").or(`user_id.is.null,user_id.eq.${uid}`),
+          // load default categories (no user_id column anymore)
+          supabase.from("categories").select("*"),
+          // load user's custom categories
+          supabase.from("user_categories").select("*").eq("user_id", uid),
           // load per-user toggle overrides for default categories
           supabase.from("category_settings").select("*").eq("user_id", uid),
+          // load transfer charges
+          supabase.from("transfer_charges").select("*").eq("is_active", true),
         ]);
 
         if (cancelled) return;
@@ -328,43 +341,59 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           settingsMap.set(s.category_id, s.is_enabled);
         });
 
-        // Build combined category list (deduplicating by name+type so shared defaults win):
-        const allCatsRaw = categoriesRes.data ?? [];
-        const uniqueCatMap = new Map<string, any>();
-        allCatsRaw.forEach((c: any) => {
-          const key = catKey(c.name, !!c.is_income);
-          if (!uniqueCatMap.has(key) || c.user_id === null) {
-            uniqueCatMap.set(key, c);
-          }
-        });
+        // Build category list from defaults + user custom categories
+        const defaultCats = categoriesRes.data ?? [];
+        const userCats = userCategoriesRes.data ?? [];
 
-        const uniqueCatsRaw = Array.from(uniqueCatMap.values());
-
-        const dbCategories: CategoryRow[] = uniqueCatsRaw.map((c: any) => {
-          const isDefault = c.user_id === null;
-          const isEnabled = isDefault
-            ? (settingsMap.has(c.id) ? settingsMap.get(c.id)! : true)
-            : (c.is_enabled ?? true);
-          return {
+        const dbCategories: CategoryRow[] = [
+          // Default categories (from categories table)
+          ...defaultCats.map((c: any) => ({
             id: c.id,
             name: c.name,
             is_income: c.is_income,
-            is_default: c.is_default,
-            is_enabled: isEnabled,
-            user_id: c.user_id ?? null,
-          };
-        });
+            is_default: true,
+            is_enabled: settingsMap.has(c.id) ? settingsMap.get(c.id)! : true,
+            user_id: null as string | null,
+          })),
+          // User custom categories (from user_categories table)
+          ...userCats.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            is_income: c.is_income,
+            is_default: false,
+            is_enabled: c.is_enabled ?? true,
+            user_id: c.user_id,
+          })),
+        ];
 
         setCategories(dbCategories);
 
-        // build category maps from ALL categories (shared defaults + user's own)
+        // Map transfer charges from DB
+        const dbCharges: TransferCharge[] = (transferChargesRes.data ?? []).map((r: any) => ({
+          id: r.id,
+          fromProvider: r.from_provider,
+          toProvider: r.to_provider,
+          chargeRate: Number(r.charge_rate),
+          flatFee: Number(r.flat_fee ?? 0),
+          isSuperAgent: r.is_super_agent,
+          label: r.label ?? null,
+          isActive: r.is_active,
+        }));
+        setTransferCharges(dbCharges);
+
+        // build category maps from BOTH tables (defaults + user custom)
         const catIdToName: Record<string, string> = {};
         const cache = new Map<string, string>();
-        allCatsRaw.forEach((c: any) => {
+        // Defaults first (always win in cache)
+        defaultCats.forEach((c: any) => {
+          catIdToName[c.id] = c.name;
+          cache.set(catKey(c.name, !!c.is_income), c.id);
+        });
+        // User custom categories (only add if not already a default)
+        userCats.forEach((c: any) => {
           catIdToName[c.id] = c.name;
           const key = catKey(c.name, !!c.is_income);
-          // shared default (user_id=null) wins — we never want to create a per-user copy
-          if (!cache.has(key) || c.user_id === null) cache.set(key, c.id);
+          if (!cache.has(key)) cache.set(key, c.id);
         });
         catCacheRef.current = cache;
 
@@ -439,39 +468,43 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       const cached = catCacheRef.current.get(key);
       if (cached) return cached;
 
-      // 2) look up in DB — prefer shared default (user_id IS NULL), then user-owned
-      //    NEVER create a per-user copy of a default category.
-      const { data: existing, error: findErr } = await supabase
+      // 2) look up in default categories table first
+      const { data: defaultMatch } = await supabase
         .from("categories")
-        .select("id,user_id")
+        .select("id")
         .ilike("name", name)
         .eq("is_income", isIncome)
-        .or(`user_id.is.null,user_id.eq.${userId}`);
+        .maybeSingle();
 
-      if (findErr) {
-        console.error("resolveCategoryId lookup failed", findErr);
-        return null;
+      if (defaultMatch) {
+        catCacheRef.current.set(key, defaultMatch.id);
+        return defaultMatch.id;
       }
 
-      if (existing && existing.length > 0) {
-        // prefer the shared default row (user_id = null), else user's own
-        const defaultRow = existing.find((c: any) => c.user_id === null);
-        const id = (defaultRow ?? existing[0]).id as string;
-        catCacheRef.current.set(key, id);
-        return id;
+      // 3) look up in user_categories table
+      const { data: userMatch } = await supabase
+        .from("user_categories")
+        .select("id")
+        .ilike("name", name)
+        .eq("is_income", isIncome)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (userMatch) {
+        catCacheRef.current.set(key, userMatch.id);
+        return userMatch.id;
       }
 
-      // 3) genuinely new (not a default) → create user-owned category
+      // 4) genuinely new → create in user_categories
       const { data: created, error: createErr } = await supabase
-        .from("categories")
+        .from("user_categories")
         .insert({
           name,
           is_income: isIncome,
-          is_default: false,
           is_enabled: true,
           user_id: userId,
         })
-        .select("id,name,is_income,is_default,is_enabled,user_id")
+        .select("id,name,is_income")
         .single();
 
       if (createErr || !created) {
@@ -480,21 +513,17 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       }
 
       catCacheRef.current.set(key, created.id);
-      setCategories((prev) =>
-        prev.some((c) => c.id === created.id)
-          ? prev
-          : [
-              ...prev,
-              {
-                id: created.id,
-                name: created.name,
-                is_income: created.is_income,
-                is_default: created.is_default,
-                is_enabled: created.is_enabled ?? true,
-                user_id: userId,
-              },
-            ],
-      );
+      setCategories((prev) => [
+        ...prev,
+        {
+          id: created.id,
+          name: created.name,
+          is_income: created.is_income,
+          is_default: false,
+          is_enabled: true,
+          user_id: userId,
+        },
+      ]);
       return created.id;
     },
     [userId],
@@ -1341,8 +1370,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           const catNameToId: Record<string, string> = {};
           const { data: cats } = await supabase
             .from("categories")
-            .select("id,name")
-            .or(`user_id.is.null,user_id.eq.${userId}`);
+            .select("id,name");
           (cats ?? []).forEach((c: any) => {
             catNameToId[c.name] = c.id;
           });
@@ -1452,13 +1480,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // User-owned category only — never duplicate a default
+      // Insert into user_categories table
       const { data, error } = await supabase
-        .from("categories")
+        .from("user_categories")
         .insert({
           name: trimmed,
           is_income: isIncome,
-          is_default: false,
           is_enabled: true,
           user_id: userId,
         })
@@ -1477,8 +1504,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
             id: data.id,
             name: data.name,
             is_income: data.is_income,
-            is_default: data.is_default,
-            is_enabled: data.is_enabled ?? true,
+            is_default: false,
+            is_enabled: true,
             user_id: userId,
           },
         ]);
@@ -1493,12 +1520,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (!userId) return;
       const cat = categories.find((c) => c.id === id);
       // Only user-owned (non-default) categories can be renamed
-      if (!cat || cat.is_default || cat.user_id === null) return;
+      if (!cat || cat.is_default) return;
       const trimmed = name.trim();
       if (!trimmed) return;
 
       const { error } = await supabase
-        .from("categories")
+        .from("user_categories")
         .update({ name: trimmed, updated_at: new Date().toISOString() })
         .eq("id", id)
         .eq("user_id", userId);
@@ -1521,7 +1548,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
       const cat = categories.find((c) => c.id === id);
       // Only user-owned (non-default) categories can be deleted
-      if (!cat || cat.is_default || cat.user_id === null) return;
+      if (!cat || cat.is_default) return;
 
       // Clean up any category_settings rows for this category (safety)
       await supabase
@@ -1544,7 +1571,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       }
 
       const { error } = await supabase
-        .from("categories")
+        .from("user_categories")
         .delete()
         .eq("id", id)
         .eq("user_id", userId);
@@ -1573,10 +1600,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       const cat = categories.find((c) => c.id === id);
       if (!cat) return;
 
-      if (cat.user_id === null) {
+      if (cat.is_default) {
         // ── Default category: use category_settings table ──────────────
-        // A row in category_settings means the category is disabled.
-        // Enabling → delete the row. Disabling → upsert with is_enabled=false.
         if (enabled) {
           const { error } = await supabase
             .from("category_settings")
@@ -1600,20 +1625,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           }
         }
       } else {
-        // ── User-owned category: toggle categories.is_enabled directly ──
+        // ── User custom category: toggle user_categories.is_enabled ──
         const { error } = await supabase
-          .from("categories")
+          .from("user_categories")
           .update({ is_enabled: enabled, updated_at: new Date().toISOString() })
           .eq("id", id)
           .eq("user_id", userId);
 
         if (error) {
-          console.error("toggleCategory (user-owned) failed", error);
+          console.error("toggleCategory (custom) failed", error);
           return;
         }
       }
 
-      // Update local state for both cases
+      // Update local state
       setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, is_enabled: enabled } : c)));
     },
     [userId, categories],
@@ -1651,6 +1676,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       categories,
       incomeCategories,
       expenseCategories,
+      transferCharges,
       addTransaction,
       updateTransaction,
       deleteTransaction,
@@ -1679,6 +1705,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       categories,
       incomeCategories,
       expenseCategories,
+      transferCharges,
       addTransaction,
       updateTransaction,
       deleteTransaction,

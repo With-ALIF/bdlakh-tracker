@@ -409,6 +409,71 @@ create trigger trg_sync_balance_on_transfer
   after insert or delete or update on public.transfers
   for each row execute function public.sync_wallet_balance();
 
+-- ─────────────────────────────────────────────────────────────
+-- 11. USER PHOTOS (Global Photo Table)
+-- ─────────────────────────────────────────────────────────────
+-- Stores profile photos separately from profiles.
+-- Shared across all projects using the same Supabase database.
+-- One row per user (user_id is Primary Key).
+create table public.user_photos (
+  user_id    uuid primary key references auth.users(id) on delete cascade,
+  photo_url  text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.user_photos enable row level security;
+
+-- Anyone can read photos (needed for avatars across projects)
+create policy "Anyone can read user photos"
+  on public.user_photos for select
+  using (true);
+
+-- Users can insert their own photo
+create policy "Users can insert own photo"
+  on public.user_photos for insert
+  with check (auth.uid() = user_id);
+
+-- Users can update their own photo
+create policy "Users can update own photo"
+  on public.user_photos for update
+  using (auth.uid() = user_id);
+
+-- Users can delete their own photo
+create policy "Users can delete own photo"
+  on public.user_photos for delete
+  using (auth.uid() = user_id);
+
+-- Auto-update updated_at on photo changes
+create or replace function public.handle_user_photo_update()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+create or replace trigger on_user_photo_updated
+  before update on public.user_photos
+  for each row execute function public.handle_user_photo_update();
+
+-- Upsert helper: insert or update user photo
+create or replace function public.upsert_user_photo(
+  p_user_id uuid,
+  p_photo_url text
+)
+returns void as $$
+begin
+  insert into public.user_photos (user_id, photo_url)
+  values (p_user_id, p_photo_url)
+  on conflict (user_id) do update
+  set photo_url = excluded.photo_url,
+      updated_at = now();
+end;
+$$ language plpgsql security invoker;
+
+grant execute on function public.upsert_user_photo(uuid, text) to authenticated;
+
 -- ============================================================
 -- Fix: prevent duplicate categories (run once on existing DBs)
 -- ============================================================

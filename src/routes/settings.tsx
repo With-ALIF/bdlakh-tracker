@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import dayjs from "dayjs";
 import {
   LogOut,
@@ -11,12 +11,14 @@ import {
   Loader2,
   CheckCircle2,
   Tags,
+  Camera,
 } from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
 import { PageHeader, Panel } from "@/components/ui-kit";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useFinance } from "@/context/FinanceContext";
+import { now } from "@/lib/date";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +26,8 @@ import { cn } from "@/lib/utils";
 import { UserAvatar } from "@/components/UserAvatar";
 import { toast } from "sonner";
 import { CategoryManager } from "@/components/CategoryManager";
+import { supabase } from "@/lib/supabase";
+import { normalizePhotoUrl } from "@/routes/utils";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -43,7 +47,7 @@ export const Route = createFileRoute("/settings")({
 });
 
 function ProfilePage() {
-  const { user, signOut, updatePassword } = useAuth();
+  const { user, signOut, updatePassword, refetchProfile } = useAuth();
   const { theme, setTheme } = useTheme();
   const { categories } = useFinance();
   const [catOpen, setCatOpen] = useState(false);
@@ -52,10 +56,18 @@ function ProfilePage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [savingPhoto, setSavingPhoto] = useState(false);
+
+  useEffect(() => {
+    if (user?.photoUrl) {
+      setPhotoUrl(user.photoUrl);
+    }
+  }, [user?.photoUrl]);
 
   const memberSince = user?.createdAt
     ? dayjs(user.createdAt).format("DD, MMM, YYYY")
-    : dayjs().format("DD, MMM, YYYY");
+    : now().format("DD, MMM, YYYY");
 
   const enabledCount = categories.filter((c) => c.is_enabled).length;
 
@@ -90,6 +102,24 @@ function ProfilePage() {
       toast.error(err?.message || "Failed to update password");
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+  const handleSavePhoto = async () => {
+    if (!user?.id) return;
+    setSavingPhoto(true);
+    try {
+      const { error } = await supabase.rpc("upsert_user_photo", {
+        p_user_id: user.id,
+        p_photo_url: normalizePhotoUrl(photoUrl.trim()) || null,
+      });
+      if (error) throw error;
+      await refetchProfile();
+      toast.success("Photo updated successfully");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update photo");
+    } finally {
+      setSavingPhoto(false);
     }
   };
 
@@ -163,6 +193,38 @@ function ProfilePage() {
                 ))}
               </div>
             </div>
+          </div>
+        </Panel>
+
+        {/* Profile Photo */}
+        <Panel>
+          <div className="mb-4 flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary-soft text-primary">
+              <Camera className="h-4 w-4" />
+            </span>
+            <h3 className="text-sm font-bold">Profile Photo</h3>
+          </div>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Photo URL
+              </Label>
+              <Input
+                type="text"
+                value={photoUrl}
+                onChange={(e) => setPhotoUrl(e.target.value)}
+                placeholder="Paste your photo URL here"
+                autoComplete="off"
+              />
+            </div>
+            <Button onClick={handleSavePhoto} disabled={savingPhoto} className="gap-2">
+              {savingPhoto ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              {savingPhoto ? "Saving..." : "Save Photo"}
+            </Button>
           </div>
         </Panel>
 

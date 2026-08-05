@@ -7,15 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
+import { today } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import type { Loan, LoanDirection } from "@/types";
 import { LOAN_TYPES } from "./utils";
 import { toast } from "sonner";
 
 export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; onOpenChange: (v: boolean) => void; loan?: Loan }) {
-  const { accounts, addLoan, updateLoan, addTransaction } = useFinance();
+  const { accounts, addLoan, updateLoan, addTransaction, transferCharges } = useFinance();
   const b = useBalances();
-  const today = new Date().toISOString().slice(0, 10);
+  const t = today();
 
   const [form, setForm] = useState({
     contactName: loan?.contactName ?? "",
@@ -23,7 +24,7 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
     totalAmount: loan?.totalAmount ? String(loan.totalAmount) : "",
     accountId: loan?.accountId ?? accounts[0]?.id ?? "",
     loanType: loan?.loanType ?? "Personal Loan",
-    loanDate: loan?.loanDate ?? today,
+    loanDate: loan?.loanDate ?? t,
     dueDate: loan?.dueDate ?? "",
     isSpecialNumber: true as boolean,
   });
@@ -40,7 +41,7 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
         totalAmount: loan?.totalAmount ? String(loan.totalAmount) : "",
         accountId: loan?.accountId ?? accounts[0]?.id ?? "",
         loanType: loan?.loanType ?? "Personal Loan",
-        loanDate: loan?.loanDate ?? today,
+    loanDate: loan?.loanDate ?? t,
         dueDate: loan?.dueDate ?? "",
         isSpecialNumber: true,
       });
@@ -49,9 +50,15 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
   };
 
   const selectedAccount = accounts.find((a) => a.id === form.accountId);
-  const isMfsAccount = selectedAccount?.type === "mfs";
-  const showSpecialNumber = form.direction === "receivable" && isMfsAccount;
-  const specialCharge = showSpecialNumber && !form.isSpecialNumber ? 5 : 0;
+
+  const accountFlatFee = transferCharges.find(
+    (c) => c.flatFee > 0 && c.fromProvider === selectedAccount?.providerId && c.toProvider === selectedAccount?.providerId,
+  );
+  const flatFee = accountFlatFee?.flatFee ?? 0;
+
+  const showSpecialNumber = form.direction === "receivable" && flatFee > 0;
+
+  const specialCharge = showSpecialNumber && !form.isSpecialNumber ? flatFee : 0;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,7 +97,7 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
           date: form.loanDate,
           accountId: form.accountId,
           category: "Transfer Charge",
-          title: `Special Number Charge — ${selectedAccount?.name ?? ""}`,
+          title: `${selectedAccount?.name ?? "Account"} ${flatFee} Tk Charge`,
         });
       }
       toast.success("Loan added");
@@ -129,7 +136,7 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase text-muted-foreground">Account *</Label>
             <select value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-              {accounts.map((a) => (<option key={a.id} value={a.id}>{a.name} — {b.money(b.balances.get(a.id) ?? 0)}</option>))}
+              {accounts.sort((a, b) => a.name.localeCompare(b.name)).map((a) => (<option key={a.id} value={a.id}>{a.name} — {b.money(b.balances.get(a.id) ?? 0)}</option>))}
             </select>
             {form.direction === "receivable" && (
               <p className={cn("text-xs", selectedBalance >= amt + specialCharge || amt <= 0 ? "text-muted-foreground" : "font-semibold text-danger")}>
@@ -138,18 +145,18 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
               </p>
             )}
           </div>
-          {showSpecialNumber && (
+          {showSpecialNumber && flatFee > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-indigo-600">As a Special Number</p>
+              <p className="text-xs font-semibold text-indigo-600">{selectedAccount?.name} {flatFee} Tk charge</p>
               <div className="grid grid-cols-2 gap-2">
                 {(["Yes", "No"] as const).map((opt) => (
                   <button
                     key={opt}
                     type="button"
-                    onClick={() => setForm({ ...form, isSpecialNumber: opt === "Yes" })}
+                    onClick={() => setForm({ ...form, isSpecialNumber: opt === "No" })}
                     className={cn(
                       "rounded-xl border py-2.5 text-sm font-semibold transition",
-                      (opt === "Yes" ? form.isSpecialNumber : !form.isSpecialNumber)
+                      (opt === "Yes" ? !form.isSpecialNumber : form.isSpecialNumber)
                         ? "border-indigo-500 bg-indigo-500/10 text-indigo-600"
                         : "border-border text-muted-foreground hover:bg-muted",
                     )}
@@ -159,7 +166,7 @@ export function LoanFormDialog({ open, onOpenChange, loan }: { open: boolean; on
                 ))}
               </div>
               {!form.isSpecialNumber && (
-                <p className="text-xs text-muted-foreground">5 Tk charge will be debited</p>
+                <p className="text-xs text-muted-foreground">{flatFee} Tk charge will be debited</p>
               )}
             </div>
           )}

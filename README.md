@@ -32,6 +32,8 @@ A modern personal finance application tailored for Bangladesh. Track daily incom
 ### 4. Internal Money Transfers (`/transfer`)
 - Record transfers between any two accounts.
 - Auto-decrements source, increments destination.
+- **Transfer Charges**: Auto-calculated percentage-based fees and flat fees from DB (`transfer_charges` table).
+- **Flat Fee Support**: Same-provider charges (e.g., Bkash 5 Tk, Nagad 10 Tk) shown as expense transactions.
 - Transfer log with date and direction indicators.
 
 ### 5. Transaction Management (`/transactions`)
@@ -46,6 +48,7 @@ A modern personal finance application tailored for Bangladesh. Track daily incom
 - Record payments and loan increases.
 - Status tracking: Active, Overdue, Completed.
 - Due date reminders and notifications.
+- Flat fee charges on loan creation/increase for MFS accounts.
 
 ### 7. Monthly Calendar (`/calendar`)
 - Visual monthly calendar with daily income/expense totals.
@@ -61,10 +64,12 @@ A modern personal finance application tailored for Bangladesh. Track daily incom
 - Mark as read / mark all read (persisted in localStorage per user).
 
 ### 9. Category Manager (Settings)
+- **Default Categories**: Shared, read-only categories seeded in DB.
+- **Custom Categories**: User-owned categories stored in `user_categories` table.
 - Add, edit, delete custom categories.
-- Enable/disable categories (per-user via DB trigger).
+- Enable/disable both default and custom categories.
 - Search and filter by Income/Expense tabs.
-- Default categories auto-copied to each user on signup.
+- Custom categories are private to each user.
 
 ### 10. Profile & Settings (`/settings`)
 - User profile with avatar.
@@ -121,22 +126,31 @@ A modern personal finance application tailored for Bangladesh. Track daily incom
 
 ### Tables
 - **users** — Auth profiles (auto-created on signup)
-- **categories** — Income/Expense categories (per-user via trigger)
+- **categories** — Shared default categories (read-only, `user_id` column removed)
+- **user_categories** — User-owned custom categories with enable/disable
+- **category_settings** — Per-user toggle overrides for default categories
+- **payment_providers** — Payment provider branding (Cash, Bkash, Nagad, Rocket, Bank)
+- **transfer_charges** — Transfer fees (percentage + flat fee) between providers
 - **wallets** — User accounts with balances
 - **transactions** — Income/Expense records
 - **transfers** — Internal wallet-to-wallet transfers
 - **loans** — Receivable/Payable loans
 - **loan_payments** — Loan payment records
 - **loan_increases** — Loan amount increases
-- **payment_providers** — Payment provider branding
+
+### Category System
+- **Default categories** (`categories` table): Shared across all users, stored once with `user_id = NULL`. Read-only.
+- **Custom categories** (`user_categories` table): Per-user, full CRUD. Each user has their own custom categories.
+- **Category settings** (`category_settings` table): Per-user toggle to enable/disable default categories. No row = enabled. Row with `is_enabled = false` = disabled.
+- When displaying, both default and custom categories are merged into a single list.
 
 ### Key Triggers
-- **`on_user_created_copy_categories`** — Auto-copies default categories for new users.
 - **`trg_sync_balance_on_tx`** / **`trg_sync_balance_on_transfer`** — Auto-syncs `current_balance` on wallets.
 
 ### RLS Policies
 - Users can only read/write their own data.
-- Default categories (`user_id = NULL`) are readable by all.
+- Default categories (`categories` table) are readable by all.
+- Custom categories (`user_categories`) are private per user.
 
 ---
 
@@ -176,25 +190,43 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 Run the SQL in `supabase/schema.sql` in the Supabase SQL Editor, then run the migration queries:
 
 ```sql
--- 1. Add is_enabled column
-ALTER TABLE public.categories
-ADD COLUMN IF NOT EXISTS is_enabled boolean NOT NULL DEFAULT true;
+-- 1. Create user_categories table
+CREATE TABLE IF NOT EXISTS public.user_categories (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  name       text NOT NULL,
+  is_income  boolean NOT NULL DEFAULT false,
+  is_enabled boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(user_id, name, is_income)
+);
 
--- 2. Category copy trigger
-CREATE OR REPLACE FUNCTION public.copy_default_categories()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO public.categories (user_id, name, is_income, is_default, is_enabled)
-  SELECT NEW.id, name, is_income, true, true
-  FROM public.categories
-  WHERE is_default = true AND user_id IS NULL;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+ALTER TABLE public.user_categories ENABLE ROW LEVEL SECURITY;
 
-CREATE TRIGGER on_user_created_copy_categories
-  AFTER INSERT ON public.users
-  FOR EACH ROW EXECUTE FUNCTION public.copy_default_categories();
+CREATE POLICY "Users can manage own custom categories"
+  ON public.user_categories FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_user_categories_user ON public.user_categories(user_id);
+
+-- 2. Category settings (per-user toggle for defaults)
+CREATE TABLE IF NOT EXISTS public.category_settings (
+  user_id     uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  category_id uuid NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  is_enabled  boolean NOT NULL DEFAULT false,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, category_id)
+);
+
+ALTER TABLE public.category_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own category settings"
+  ON public.category_settings FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 -- 3. Wallet balance sync trigger
 CREATE OR REPLACE FUNCTION public.sync_wallet_balance()
@@ -226,19 +258,6 @@ CREATE TRIGGER trg_sync_balance_on_tx
 CREATE TRIGGER trg_sync_balance_on_transfer
   AFTER INSERT OR UPDATE OR DELETE ON public.transfers
   FOR EACH ROW EXECUTE FUNCTION public.sync_wallet_balance();
-
--- 4. Backfill existing users
-INSERT INTO public.categories (user_id, name, is_income, is_default, is_enabled)
-SELECT u.id, d.name, d.is_income, true, true
-FROM public.users u
-CROSS JOIN (
-  SELECT name, is_income FROM public.categories
-  WHERE is_default = true AND user_id IS NULL GROUP BY name, is_income
-) d
-WHERE NOT EXISTS (
-  SELECT 1 FROM public.categories c
-  WHERE c.user_id = u.id AND c.name = d.name AND c.is_income = d.is_income
-);
 ```
 
 ---
@@ -278,6 +297,8 @@ src/
 │   ├── transfer.tsx    # Internal Transfers
 │   ├── loan.tsx        # Loan List
 │   ├── LoanDetail.tsx  # Loan Detail View
+│   ├── LoanFormDialog.tsx # Loan creation form
+│   ├── dialogs.tsx     # Payment & Increase dialogs
 │   ├── calendar.tsx    # Monthly Calendar
 │   ├── notifications.tsx # Notification Center
 │   └── settings.tsx    # Profile & Settings
@@ -291,7 +312,7 @@ src/
 
 ## Privacy
 
-User data is stored in Supabase PostgreSQL with Row Level Security. Each user can only access their own records. No telemetry or tracking.
+User data is stored in Supabase PostgreSQL with Row Level Security. Each user can only access their own records. Custom categories are private per user. No telemetry or tracking.
 
 ---
 

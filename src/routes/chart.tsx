@@ -8,17 +8,10 @@ import {
   PieChart as PieChartIcon,
   BarChart3,
   Percent,
-  Layers,
   Flame,
-  CalendarClock,
-  CreditCard,
   Calendar,
   Hash,
-  ArrowDownLeft,
-  ArrowUpRight,
   Trophy,
-  Repeat,
-  Zap,
 } from "lucide-react";
 import {
   AreaChart,
@@ -39,9 +32,9 @@ import { AppLayout } from "@/layouts/AppLayout";
 import { PageHeader, Panel, StatCard, EmptyState } from "@/components/ui-kit";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
+import { now } from "@/lib/date";
 import { groupByCategory, sumBy } from "@/utils/finance";
 import { CATEGORY_COLORS } from "@/constants";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/chart")({
   head: () => ({
@@ -66,32 +59,30 @@ type TimeRange =
   | "this_week"
   | "15_days"
   | "this_month"
-  | "3_months"
-  | "6_months"
   | "this_year"
+  | "lifetime"
   | "custom";
 
 function ChartPage() {
-  const { transactions, accounts } = useFinance();
+  const { transactions } = useFinance();
   const b = useBalances();
   const [range, setRange] = useState<TimeRange>("this_month");
   const [customFrom, setCustomFrom] = useState(() =>
-    dayjs().subtract(30, "day").format("YYYY-MM-DD"),
+    now().subtract(30, "day").format("YYYY-MM-DD"),
   );
-  const [customTo, setCustomTo] = useState(() => dayjs().format("YYYY-MM-DD"));
+  const [customTo, setCustomTo] = useState(() => now().format("YYYY-MM-DD"));
 
   // Filter transactions based on selected range
   const filteredTxs = useMemo(() => {
-    const now = dayjs();
+    const cur = now();
     return transactions.filter((t) => {
       const d = dayjs(t.date);
-      if (range === "today") return d.isSame(now, "day");
-      if (range === "this_week") return d.isSame(now, "week");
-      if (range === "15_days") return d.isAfter(now.subtract(15, "day"));
-      if (range === "this_month") return d.isSame(now, "month");
-      if (range === "3_months") return d.isAfter(now.subtract(3, "month"));
-      if (range === "6_months") return d.isAfter(now.subtract(6, "month"));
-      if (range === "this_year") return d.isSame(now, "year");
+      if (range === "today") return d.isSame(cur, "day");
+      if (range === "this_week") return d.isSame(cur, "week");
+      if (range === "15_days") return d.isAfter(cur.subtract(15, "day"));
+      if (range === "this_month") return d.isSame(cur, "month");
+      if (range === "this_year") return d.isSame(cur, "year");
+      if (range === "lifetime") return true;
       if (range === "custom") {
         const from = dayjs(customFrom);
         const to = dayjs(customTo).endOf("day");
@@ -112,7 +103,7 @@ function ChartPage() {
   // Monthly / Period chart data
   const chartData = useMemo(() => {
     if (range === "today") {
-      const d = dayjs();
+      const d = now();
       const txs = filteredTxs;
       return [
         {
@@ -125,7 +116,7 @@ function ChartPage() {
     }
     if (range === "this_week") {
       return Array.from({ length: 7 }, (_, i) => {
-        const d = dayjs().startOf("week").add(i, "day");
+        const d = now().startOf("week").add(i, "day");
         const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(d, "day"));
         const inc = sumBy(txs, "income");
         const exp = sumBy(txs, "expense");
@@ -134,7 +125,7 @@ function ChartPage() {
     }
     if (range === "15_days") {
       return Array.from({ length: 15 }, (_, i) => {
-        const d = dayjs().subtract(14 - i, "day");
+        const d = now().subtract(14 - i, "day");
         const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(d, "day"));
         const inc = sumBy(txs, "income");
         const exp = sumBy(txs, "expense");
@@ -143,9 +134,21 @@ function ChartPage() {
     }
 
     let monthCount = 1;
-    if (range === "3_months") monthCount = 3;
-    else if (range === "6_months") monthCount = 6;
-    else if (range === "this_year") monthCount = dayjs().month() + 1;
+    if (range === "this_year") monthCount = now().month() + 1;
+    else if (range === "lifetime") {
+      if (filteredTxs.length === 0) return [];
+      const sorted = [...filteredTxs].sort((a, b) => a.date.localeCompare(b.date));
+      const from = dayjs(sorted[0].date).startOf("month");
+      const to = now();
+      const months = to.diff(from, "month") + 1;
+      return Array.from({ length: months }, (_, i) => {
+        const m = from.add(i, "month");
+        const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(m, "month"));
+        const inc = sumBy(txs, "income");
+        const exp = sumBy(txs, "expense");
+        return { month: m.format("MMM YYYY"), Income: inc, Expense: exp, Net: inc - exp };
+      });
+    }
 
     if (range === "custom") {
       const from = dayjs(customFrom);
@@ -161,7 +164,7 @@ function ChartPage() {
     }
 
     return Array.from({ length: monthCount }, (_, i) => {
-      const m = dayjs().subtract(monthCount - 1 - i, "month");
+      const m = now().subtract(monthCount - 1 - i, "month");
       const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(m, "month"));
       const inc = sumBy(txs, "income");
       const exp = sumBy(txs, "expense");
@@ -177,18 +180,21 @@ function ChartPage() {
   // Daily trend based on selected range
   const dayCount = useMemo(() => {
     if (range === "today") return 1;
-    if (range === "this_week") return dayjs().day() + 1;
+    if (range === "this_week") return now().day() + 1;
     if (range === "15_days") return 15;
-    if (range === "this_month") return dayjs().date();
-    if (range === "3_months") return 90;
-    if (range === "6_months") return 180;
-    if (range === "this_year") return dayjs().diff(dayjs().startOf("year"), "day") + 1;
+    if (range === "this_month") return now().date();
+    if (range === "this_year") return now().diff(now().startOf("year"), "day") + 1;
+    if (range === "lifetime") {
+      if (filteredTxs.length === 0) return 1;
+      const sorted = [...filteredTxs].sort((a, b) => a.date.localeCompare(b.date));
+      return now().diff(dayjs(sorted[0].date), "day") + 1;
+    }
     if (range === "custom") return dayjs(customTo).diff(dayjs(customFrom), "day") + 1;
     return 14;
   }, [range, customFrom, customTo]);
 
   const dailyData = useMemo(() => {
-    const from = range === "custom" ? dayjs(customFrom) : dayjs().subtract(dayCount - 1, "day");
+    const from = range === "custom" ? dayjs(customFrom) : now().subtract(dayCount - 1, "day");
     return Array.from({ length: dayCount }, (_, i) => {
       const d = from.add(i, "day");
       const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(d, "day"));
@@ -212,88 +218,86 @@ function ChartPage() {
     return groupByCategory(incomes);
   }, [filteredTxs]);
 
-  // Account Distribution
-  const accountData = useMemo(() => {
-    return accounts
-      .map((a) => ({ name: a.name, value: Math.max(b.balances.get(a.id) ?? 0, 0), color: a.color }))
-      .filter((d) => d.value > 0);
-  }, [accounts, b]);
-
-  // Weekly spending based on selected range
-  const weeklyData = useMemo(() => {
-    const now = dayjs();
-    let days: number;
-    if (range === "today") days = 1;
-    else if (range === "this_week") days = 7;
-    else if (range === "15_days") days = 15;
-    else if (range === "this_month") days = now.daysInMonth();
-    else if (range === "3_months") days = 90;
-    else if (range === "6_months") days = 180;
-    else if (range === "custom") days = dayjs(customTo).diff(dayjs(customFrom), "day") + 1;
-    else if (range === "this_year")
-      return Array.from({ length: now.month() + 1 }, (_, i) => {
-        const m = now.startOf("year").add(i, "month");
-        const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(m, "month"));
-        return { day: m.format("MMM"), Spent: sumBy(txs, "expense") };
-      });
-    else days = 7;
-
-    const from = range === "custom" ? dayjs(customFrom) : now.subtract(days - 1, "day");
-    return Array.from({ length: days }, (_, i) => {
-      const d = from.add(i, "day");
-      const txs = filteredTxs.filter((t) => dayjs(t.date).isSame(d, "day"));
-      return {
-        day: days <= 31 ? d.format("DD MMM") : d.format("MMM DD"),
-        Spent: sumBy(txs, "expense"),
-      };
-    });
-  }, [filteredTxs, range, customFrom, customTo]);
-
   const insights = useMemo(() => {
     const expenses = filteredTxs.filter((t) => t.type === "expense");
-    const incomes = filteredTxs.filter((t) => t.type === "income");
-    const totalExpenseAmt = expenses.reduce((s, t) => s + t.amount, 0);
-    const avgDaily = dayCount > 0 ? totalExpenseAmt / dayCount : 0;
-
-    // Most expensive day
     const dayMap = new Map<string, number>();
     for (const t of expenses) {
       dayMap.set(t.date, (dayMap.get(t.date) ?? 0) + t.amount);
     }
     const mostExpensiveDay = [...dayMap.entries()].sort((a, b) => b[1] - a[1])[0];
 
-    // Most frequent category
-    const catCount = new Map<string, number>();
-    for (const t of filteredTxs) {
-      catCount.set(t.category, (catCount.get(t.category) ?? 0) + 1);
+    const cur = now();
+    let currentTxs = filteredTxs;
+    let prevTxs: typeof transactions;
+
+    if (range === "today") {
+      const yesterday = cur.subtract(1, "day");
+      prevTxs = transactions.filter((t) => dayjs(t.date).isSame(yesterday, "day"));
+    } else if (range === "this_week") {
+      const lastWeek = cur.subtract(1, "week");
+      prevTxs = transactions.filter((t) => dayjs(t.date).isSame(lastWeek, "week"));
+    } else if (range === "15_days") {
+      const from = cur.subtract(30, "day");
+      const mid = cur.subtract(15, "day");
+      prevTxs = transactions.filter((t) => {
+        const d = dayjs(t.date);
+        return d.isAfter(from) && d.isBefore(mid);
+      });
+    } else if (range === "this_month") {
+      const lastMonth = cur.subtract(1, "month");
+      prevTxs = transactions.filter((t) => dayjs(t.date).isSame(lastMonth, "month"));
+    } else if (range === "this_year") {
+      const lastYear = cur.subtract(1, "year");
+      prevTxs = transactions.filter((t) => dayjs(t.date).isSame(lastYear, "year"));
+    } else if (range === "lifetime") {
+      prevTxs = transactions.filter((t) => dayjs(t.date).isSame(cur.subtract(1, "year"), "year"));
+    } else if (range === "custom") {
+      const from = dayjs(customFrom);
+      const to = dayjs(customTo);
+      const diff = to.diff(from, "day");
+      const prevTo = from.subtract(1, "day");
+      const prevFrom = prevTo.subtract(diff, "day");
+      prevTxs = transactions.filter((t) => {
+        const d = dayjs(t.date);
+        return (d.isAfter(prevFrom) || d.isSame(prevFrom, "day")) && (d.isBefore(prevTo) || d.isSame(prevTo, "day"));
+      });
+    } else {
+      prevTxs = [];
     }
-    const mostFrequent = [...catCount.entries()].sort((a, b) => b[1] - a[1])[0];
 
-    // Highest single transaction
-    const highestTx = filteredTxs.length
-      ? filteredTxs.reduce((max, t) => (t.amount > max.amount ? t : max), filteredTxs[0])
-      : null;
-
-    const accountUse = new Map<string, number>();
-    for (const t of filteredTxs)
-      accountUse.set(t.accountId, (accountUse.get(t.accountId) ?? 0) + 1);
-    const mostUsed = [...accountUse.entries()].sort((a, c) => c[1] - a[1])[0];
+    const currentIncome = sumBy(currentTxs, "income");
+    const prevIncome = sumBy(prevTxs, "income");
+    const growth = prevIncome > 0
+      ? Math.round(((currentIncome - prevIncome) / prevIncome) * 100)
+      : currentIncome > 0 ? 100 : 0;
 
     return {
       topCategory: categoryData[0]?.name ?? "—",
       topCategoryAmount: categoryData[0]?.value ?? 0,
-      avgDaily,
-      mostUsedAccount: mostUsed ? b.accountName(mostUsed[0]) : "—",
       totalTransactions: filteredTxs.length,
-      incomeTransactions: incomes.length,
-      expenseTransactions: expenses.length,
       mostExpensiveDay: mostExpensiveDay
         ? { date: mostExpensiveDay[0], amount: mostExpensiveDay[1] }
         : null,
-      mostFrequentCategory: mostFrequent ? mostFrequent[0] : "—",
-      highestSingleTx: highestTx,
+      growth,
     };
-  }, [filteredTxs, categoryData, b, dayCount]);
+  }, [filteredTxs, categoryData, transactions, range, customFrom, customTo]);
+
+  const rangeLabel = useMemo(() => {
+    const cur = now();
+    const fmt = "DD MMM YYYY";
+    if (range === "today") return cur.format(fmt);
+    if (range === "this_week") return `${cur.startOf("week").format(fmt)} – ${cur.format(fmt)}`;
+    if (range === "15_days") return `${cur.subtract(14, "day").format(fmt)} – ${cur.format(fmt)}`;
+    if (range === "this_month") return `${cur.startOf("month").format(fmt)} – ${cur.format(fmt)}`;
+    if (range === "this_year") return `${cur.startOf("year").format(fmt)} – ${cur.format(fmt)}`;
+    if (range === "lifetime") {
+      if (filteredTxs.length === 0) return cur.format(fmt);
+      const sorted = [...filteredTxs].sort((a, b) => a.date.localeCompare(b.date));
+      return `${dayjs(sorted[0].date).format(fmt)} – ${cur.format(fmt)}`;
+    }
+    if (range === "custom") return `${dayjs(customFrom).format(fmt)} – ${dayjs(customTo).format(fmt)}`;
+    return "";
+  }, [range, filteredTxs, customFrom, customTo]);
 
   const hasData = transactions.length > 0;
 
@@ -347,26 +351,6 @@ function ChartPage() {
                 This Month
               </button>
               <button
-                onClick={() => setRange("3_months")}
-                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                  range === "3_months"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                3 Months
-              </button>
-              <button
-                onClick={() => setRange("6_months")}
-                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
-                  range === "6_months"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                6 Months
-              </button>
-              <button
                 onClick={() => setRange("this_year")}
                 className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
                   range === "this_year"
@@ -375,6 +359,16 @@ function ChartPage() {
                 }`}
               >
                 This Year
+              </button>
+              <button
+                onClick={() => setRange("lifetime")}
+                className={`rounded-lg px-2.5 py-1.5 font-medium transition ${
+                  range === "lifetime"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Lifetime
               </button>
               <button
                 onClick={() => setRange("custom")}
@@ -397,9 +391,8 @@ function ChartPage() {
               <option value="this_week">This Week</option>
               <option value="15_days">15 Days</option>
               <option value="this_month">This Month</option>
-              <option value="3_months">3 Months</option>
-              <option value="6_months">6 Months</option>
               <option value="this_year">This Year</option>
+              <option value="lifetime">Lifetime</option>
               <option value="custom">Custom Range</option>
             </select>
             {/* Custom date range picker */}
@@ -423,11 +416,14 @@ function ChartPage() {
                 />
               </div>
             )}
+            {rangeLabel && (
+              <p className="mt-1.5 text-[11px] font-medium text-indigo-500 lg:text-center">{rangeLabel}</p>
+            )}
           </div>
         }
       />
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
         <StatCard
           label="Total Income"
           value={b.money(totalIncome)}
@@ -455,7 +451,7 @@ function ChartPage() {
         />
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:mt-4 sm:grid-cols-3">
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:mt-4 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
         <StatCard
           label="Highest expense category"
           value={insights.topCategory}
@@ -464,37 +460,10 @@ function ChartPage() {
           tone="danger"
         />
         <StatCard
-          label="Average daily spending"
-          value={b.money(insights.avgDaily || 0)}
-          icon={CalendarClock}
-          tone="warning"
-        />
-        <StatCard
-          label="Most used account"
-          value={insights.mostUsedAccount}
-          icon={CreditCard}
-          tone="primary"
-        />
-      </div>
-
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:mt-4 sm:grid-cols-2 md:grid-cols-3">
-        <StatCard
           label="Total Transactions"
           value={String(insights.totalTransactions)}
           icon={Hash}
           tone="default"
-        />
-        <StatCard
-          label="Income Transactions"
-          value={String(insights.incomeTransactions)}
-          icon={ArrowDownLeft}
-          tone="success"
-        />
-        <StatCard
-          label="Expense Transactions"
-          value={String(insights.expenseTransactions)}
-          icon={ArrowUpRight}
-          tone="danger"
         />
         <StatCard
           label="Most Expensive Day"
@@ -508,17 +477,10 @@ function ChartPage() {
           tone="danger"
         />
         <StatCard
-          label="Most Frequent Category"
-          value={insights.mostFrequentCategory}
-          icon={Repeat}
-          tone="primary"
-        />
-        <StatCard
-          label="Highest Single Transaction"
-          value={insights.highestSingleTx ? b.money(insights.highestSingleTx.amount) : "—"}
-          hint={insights.highestSingleTx ? insights.highestSingleTx.title : undefined}
-          icon={Zap}
-          tone="warning"
+          label="Growth"
+          value={`${insights.growth >= 0 ? "+" : ""}${insights.growth}%`}
+          icon={TrendingUp}
+          tone={insights.growth >= 0 ? "success" : "danger"}
         />
       </div>
 
@@ -534,7 +496,7 @@ function ChartPage() {
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {/* Income vs Expense Area Chart */}
           <Panel
-            title={`Income vs Expense (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}
+            title={`Income vs Expense (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "lifetime" ? "Lifetime" : "This Year"})`}
           >
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -633,7 +595,7 @@ function ChartPage() {
 
           {/* Daily Trend Bar Chart */}
           <Panel
-            title={`Daily Trend (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}
+            title={`Daily Trend (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "lifetime" ? "Lifetime" : "This Year"})`}
           >
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -648,53 +610,6 @@ function ChartPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </Panel>
-
-          {/* Weekly Spending */}
-          <Panel
-            title={`Spending (${range === "today" ? "Today" : range === "this_week" ? "This Week" : range === "15_days" ? "Last 15 Days" : range === "this_month" ? "This Month" : range === "3_months" ? "Last 3 Months" : range === "6_months" ? "Last 6 Months" : "This Year"})`}
-          >
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={weeklyData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                  <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={12} />
-                  <YAxis tickLine={false} axisLine={false} fontSize={12} width={48} />
-                  <Tooltip formatter={(v: number) => b.money(v)} />
-                  <Bar dataKey="Spent" fill="#2563EB" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Panel>
-
-          {/* Wallet Balance Distribution */}
-          <Panel title="Current Wallet Balances">
-            {accountData.length ? (
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={accountData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" />
-                    <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
-                    <YAxis
-                      dataKey="name"
-                      type="category"
-                      tickLine={false}
-                      axisLine={false}
-                      fontSize={12}
-                      width={80}
-                    />
-                    <Tooltip formatter={(v: number) => b.money(v)} />
-                    <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                      {accountData.map((d, i) => (
-                        <Cell key={i} fill={d.color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <EmptyState icon={Layers} title="No active wallet balances" />
-            )}
           </Panel>
         </div>
       )}

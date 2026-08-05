@@ -6,6 +6,7 @@ import { AppLayout } from "@/layouts/AppLayout";
 import { PageHeader, Panel, EmptyState } from "@/components/ui-kit";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
+import { now } from "@/lib/date";
 import { sumBy } from "@/utils/finance";
 import { cn } from "@/lib/utils";
 
@@ -24,8 +25,8 @@ export const Route = createFileRoute("/calendar")({
 function CalendarPage() {
   const { transactions } = useFinance();
   const b = useBalances();
-  const [cursor, setCursor] = useState(dayjs().startOf("month"));
-  const [selected, setSelected] = useState(dayjs().format("YYYY-MM-DD"));
+  const [cursor, setCursor] = useState(now().startOf("month"));
+  const [selected, setSelected] = useState(now().format("YYYY-MM-DD"));
 
   const days = useMemo(() => {
     const start = cursor.startOf("month");
@@ -95,7 +96,7 @@ function CalendarPage() {
                     selected === d && "border-primary bg-primary-soft",
                   )}
                 >
-                  <span className={cn("font-semibold", dayjs().format("YYYY-MM-DD") === d && "text-primary")}>
+                  <span className={cn("font-semibold", now().format("YYYY-MM-DD") === d && "text-primary")}>
                     {dayjs(d).date()}
                   </span>
                   <span className="mt-1 flex gap-0.5">

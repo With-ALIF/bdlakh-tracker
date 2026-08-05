@@ -3,6 +3,7 @@ import { useFinance } from "@/context/FinanceContext";
 import { useAuth } from "@/context/AuthContext";
 import { useBalances } from "@/hooks/useBalances";
 import { accountBalance } from "@/utils/finance";
+import { now } from "@/lib/date";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import isToday from "dayjs/plugin/isToday";
@@ -32,7 +33,7 @@ function groupKey(ts: string): "Today" | "Yesterday" | "Earlier" {
 }
 
 function buildLoanNotifications(loans: ReturnType<typeof useFinance>["loans"]): AppNotification[] {
-  const now = dayjs();
+  const cur = now();
   const notifications: AppNotification[] = [];
 
   for (const loan of loans) {
@@ -55,7 +56,7 @@ function buildLoanNotifications(loans: ReturnType<typeof useFinance>["loans"]): 
     if (!loan.dueDate) continue;
 
     const due = dayjs(loan.dueDate);
-    const diffDays = due.diff(now.startOf("day"), "day");
+    const diffDays = due.diff(cur.startOf("day"), "day");
     const remaining = loan.totalAmount - loan.payments.reduce((s, p) => s + p.amount, 0);
     const directionLabel = loan.direction === "receivable" ? "Receivable" : "Payable";
 
@@ -79,7 +80,7 @@ function buildLoanNotifications(loans: ReturnType<typeof useFinance>["loans"]): 
         category: "loan",
         title: "Loan Due Today",
         description: `${loan.contactName} • ৳${remaining.toLocaleString()} • Due: ${due.format("DD MMM")} • ${directionLabel}`,
-        timestamp: now.toISOString(),
+        timestamp: cur.toISOString(),
         relativeTime: "Today",
         href: "/loan",
         tone: "warning",
@@ -92,7 +93,7 @@ function buildLoanNotifications(loans: ReturnType<typeof useFinance>["loans"]): 
         category: "loan",
         title: "Loan Due Tomorrow",
         description: `${loan.contactName} • ৳${remaining.toLocaleString()} • Due: ${due.format("DD MMM")} • ${directionLabel}`,
-        timestamp: now.toISOString(),
+        timestamp: cur.toISOString(),
         relativeTime: "Tomorrow",
         href: "/loan",
         tone: "warning",
@@ -105,8 +106,8 @@ function buildLoanNotifications(loans: ReturnType<typeof useFinance>["loans"]): 
         category: "loan",
         title: "Loan Due Soon",
         description: `${loan.contactName} • ৳${remaining.toLocaleString()} • Due: ${due.format("DD MMM")} • ${directionLabel}`,
-        timestamp: now.subtract(diffDays, "day").toISOString(),
-        relativeTime: relativeTimeLabel(now.subtract(diffDays, "day").toISOString()),
+        timestamp: cur.subtract(diffDays, "day").toISOString(),
+        relativeTime: relativeTimeLabel(cur.subtract(diffDays, "day").toISOString()),
         href: "/loan",
         tone: "info",
         read: false,
@@ -148,9 +149,9 @@ function buildWalletNotifications(
 function buildLowIncomeNotifications(
   transactions: ReturnType<typeof useFinance>["transactions"],
 ): AppNotification[] {
-  const now = dayjs();
+  const cur = now();
   const monthIncome = transactions
-    .filter((t) => t.type === "income" && dayjs(t.date).isSame(now, "month"))
+    .filter((t) => t.type === "income" && dayjs(t.date).isSame(cur, "month"))
     .reduce((s, t) => s + t.amount, 0);
 
   if (monthIncome > 0 && monthIncome < LOW_INCOME_THRESHOLD) {
@@ -161,7 +162,7 @@ function buildLowIncomeNotifications(
         category: "transaction",
         title: "Low Income Alert",
         description: `Monthly income is ৳${monthIncome.toLocaleString()} — below ৳${LOW_INCOME_THRESHOLD.toLocaleString()} threshold`,
-        timestamp: now.toISOString(),
+        timestamp: cur.toISOString(),
         relativeTime: "Today",
         href: "/transactions",
         tone: "warning",
@@ -180,7 +181,7 @@ function buildTransferNotifications(
   return transfers
     .filter((t) => {
       const created = dayjs(t.createdAt);
-      return dayjs().diff(created, "day") <= 7;
+      return now().diff(created, "day") <= 7;
     })
     .map((t) => {
       const fromName = accounts.find((a) => a.id === t.fromAccountId)?.name ?? "Unknown";
@@ -206,7 +207,7 @@ function buildTransactionNotifications(
   return transactions
     .filter((t) => {
       const created = dayjs(t.createdAt);
-      return dayjs().diff(created, "day") <= 7;
+      return now().diff(created, "day") <= 7;
     })
     .slice(0, 20)
     .map((t) => {

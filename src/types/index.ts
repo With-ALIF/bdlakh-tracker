@@ -57,6 +57,7 @@ export interface LoanIncrease {
   date: string; // ISO date
   amount: number;
   accountId?: string;
+  isSpecialNumber: boolean;
 }
 
 export interface Loan {
@@ -80,4 +81,15 @@ export interface AppData {
   transactions: Transaction[];
   transfers: Transfer[];
   loans: Loan[];
+}
+
+export interface TransferCharge {
+  id: string;
+  fromProvider: string;
+  toProvider: string;
+  chargeRate: number;
+  flatFee: number;
+  isSuperAgent: boolean;
+  label: string | null;
+  isActive: boolean;
 }

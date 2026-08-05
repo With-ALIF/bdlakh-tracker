@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
+import { today } from "@/lib/date";
 import type { Transaction } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +39,7 @@ interface Props {
 }
 
 export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
-  const { accounts, incomeCategories, expenseCategories, addTransaction, updateTransaction } = useFinance();
+  const { accounts, incomeCategories, expenseCategories, addTransaction, updateTransaction, transferCharges } = useFinance();
   const b = useBalances();
 
   const form = useForm<FormValues>({
@@ -49,15 +50,28 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
       type: "expense",
       accountId: accounts[0]?.id ?? "",
       category: "Food",
-      date: dayjs().format("YYYY-MM-DD"),
+      date: today(),
     },
   });
 
   const type = form.watch("type");
+  const accountId = form.watch("accountId");
   const categories = type === "income" ? incomeCategories : expenseCategories;
 
+  const selectedAccount = accounts.find((a) => a.id === accountId);
+  const accountCharge = transferCharges.find((c) => c.flatFee > 0 && c.fromProvider === selectedAccount?.providerId && c.toProvider === selectedAccount?.providerId);
+  const showAccountCharge = type === "expense" && accountCharge;
+  const [isBkashCharge, setIsBkashCharge] = useState(false);
+
   useEffect(() => {
-    if (!open) return;
+    if (!showAccountCharge) setIsBkashCharge(false);
+  }, [showAccountCharge]);
+
+  useEffect(() => {
+    if (!open) {
+      setIsBkashCharge(false);
+      return;
+    }
     const defaultAccId = accounts[0]?.id ?? "";
     form.reset(
       transaction
@@ -68,7 +82,7 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
             type: "expense",
             accountId: defaultAccId,
             category: "Food",
-            date: dayjs().format("YYYY-MM-DD"),
+            date: today(),
           },
     );
   }, [open, transaction, accounts]);
@@ -97,6 +111,16 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
       toast.success("Transaction updated");
     } else {
       addTransaction(values);
+      if (isBkashCharge && accountCharge) {
+        addTransaction({
+          type: "expense",
+          amount: accountCharge.flatFee,
+          date: values.date,
+          accountId: values.accountId,
+          category: "Transfer Charge",
+          title: `${selectedAccount?.name ?? "Account"} ${accountCharge.flatFee} Tk Charge`,
+        });
+      }
       toast.success("Transaction added");
     }
     onOpenChange(false);
@@ -154,7 +178,7 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
                 {accounts.length === 0 ? (
                   <option value="">No wallets — Add a wallet first</option>
                 ) : (
-                  accounts.map((a) => (
+                  accounts.sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.name}
                     </option>
@@ -180,6 +204,32 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
           <Field label="Date" error={form.formState.errors.date?.message}>
             <Input type="date" {...form.register("date")} />
           </Field>
+
+          {showAccountCharge && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-indigo-600">{selectedAccount?.name} {accountCharge.flatFee} Tk Charge</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(["Yes", "No"] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setIsBkashCharge(opt === "Yes")}
+                    className={cn(
+                      "rounded-xl border py-2.5 text-sm font-semibold transition",
+                      (opt === "Yes" ? isBkashCharge : !isBkashCharge)
+                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-600"
+                        : "border-border text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+              {isBkashCharge && (
+                <p className="text-xs text-muted-foreground">{accountCharge.chargeAmount} Tk charge will be debited separately</p>
+              )}
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>

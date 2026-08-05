@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { normalizePhotoUrl } from "@/routes/utils";
 import type { User } from "@supabase/supabase-js";
 
 export type UserProfile = {
@@ -50,7 +51,7 @@ function mapUser(authUser: User | null, profile?: DbProfile | null): UserProfile
     authUser.user_metadata?.name?.trim() ||
     null;
   const email = profile?.email?.trim() || authUser.email || "";
-  const photoUrl = profile?.photo_url?.trim() || null;
+  const photoUrl = normalizePhotoUrl(profile?.photo_url?.trim() || "") || null;
   const role = profile?.role || null;
   const name = displayName || email || "User";
 
@@ -70,15 +71,25 @@ async function fetchDbProfile(userId: string): Promise<DbProfile | null> {
     // 1. Fetch from `profiles` table first
     const { data: profileData, error: profileError } = await supabase
       .from("profiles")
-      .select("display_name, email, photo_url, role")
+      .select("display_name, email, role")
       .eq("id", userId)
       .maybeSingle();
 
+    // 2. Fetch photo from `user_photos` (global photo table)
+    const { data: photoData } = await supabase
+      .from("user_photos")
+      .select("photo_url")
+      .eq("user_id", userId)
+      .maybeSingle();
+
     if (!profileError && profileData) {
-      return profileData;
+      return {
+        ...profileData,
+        photo_url: photoData?.photo_url ?? null,
+      };
     }
 
-    // 2. Fallback to `users` table
+    // 3. Fallback to `users` table
     const { data: userData } = await supabase
       .from("users")
       .select("full_name, email")
@@ -89,6 +100,7 @@ async function fetchDbProfile(userId: string): Promise<DbProfile | null> {
       return {
         display_name: userData.full_name,
         email: userData.email,
+        photo_url: photoData?.photo_url ?? null,
       };
     }
   } catch (err) {
@@ -130,20 +142,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (authUser) {
         realtimeChannel = supabase
-          .channel(`public:profiles:${authUser.id}`)
+          .channel(`public:user_photos:${authUser.id}`)
           .on(
             "postgres_changes",
             {
               event: "*",
               schema: "public",
-              table: "profiles",
-              filter: `id=eq.${authUser.id}`,
+              table: "user_photos",
+              filter: `user_id=eq.${authUser.id}`,
             },
             (payload) => {
-              const updated = payload.new as DbProfile;
-              if (updated) {
-                setUser((prev) => mapUser(authUser, updated));
-              }
+              refetchProfile();
             },
           )
           .subscribe();

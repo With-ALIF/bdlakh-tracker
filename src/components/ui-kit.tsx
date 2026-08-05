@@ -30,7 +30,7 @@ export function StatCard({
     <div className={cn("card-surface animate-rise p-4 sm:p-5", className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {label}
           </p>
           <p className="mt-2 truncate text-xl font-bold tracking-tight sm:text-2xl">{value}</p>
@@ -112,7 +112,9 @@ export function PageHeader({
           <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{subtitle}</p>
         ) : null}
       </div>
-      {action}
+      {action ? (
+        <div className="w-full sm:w-auto sm:flex-shrink-0">{action}</div>
+      ) : null}
     </header>
   );
 }

@@ -7,6 +7,7 @@ import { AppLayout } from "@/layouts/AppLayout";
 import { PageHeader, Panel, EmptyState } from "@/components/ui-kit";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
+import { today } from "@/lib/date";
 import { AccountIcon } from "@/components/AccountIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { Transfer } from "@/types";
+import { cn } from "@/lib/utils";
+import type { Transfer, TransferCharge } from "@/types";
 
 export const Route = createFileRoute("/transfer")({
   head: () => ({
@@ -36,59 +38,57 @@ export const Route = createFileRoute("/transfer")({
   component: TransferPage,
 });
 
-const TRANSFER_CHARGES: Record<string, number> = {
-  // MFS to Cash (Cash Out)
-  bkash_to_cash: 1.85 / 100,
-  nagad_to_cash: 1.45 / 100,
-  rocket_to_cash: 1.67 / 100,
-
-  // MFS to Bank/MFS (Send Money with charge) - New Rules
-  nagad_to_bank: 0.85 / 100,
-  nagad_to_bkash: 0.85 / 100,
-  bkash_to_bank: 0.85 / 100,
-  bkash_to_nagad: 0.85 / 100,
-  bank_to_cash: 0.00 / 100, // No charge for bank to cash
-};
-
 /**
- * Calculates the charge for a transfer.
- * @returns The charge, total debit amount, and whether a charge is applicable.
+ * Calculates the charge for a transfer using DB-stored charges.
  */
 function calculateTransferCharge(
   fromAccountId: string,
   toAccountId: string,
   amount: number,
   getAccountName: (id: string) => string | undefined,
+  getProviderId: (id: string) => string | undefined,
+  dbCharges: TransferCharge[],
+  isSuperAgent: boolean = false,
 ) {
-  const fromAccountName = getAccountName(fromAccountId)?.toLowerCase() ?? "";
-  let toAccountName = getAccountName(toAccountId)?.toLowerCase() ?? "";
-
-  if (toAccountName.includes("bank")) {
-    toAccountName = "bank";
-  }
-
-  const chargeKey = `${fromAccountName}_to_${toAccountName}`;
-  const chargeRate = TRANSFER_CHARGES[chargeKey];
-
-  if (!chargeRate || amount <= 0) {
+  if (amount <= 0) {
     return { charge: 0, totalDebit: amount, hasCharge: false };
   }
 
-  const rawCharge = amount * chargeRate;
-  const charge = Math.round(rawCharge * 100) / 100;
+  const fromProviderId = getProviderId(fromAccountId);
+  const toProviderId = getProviderId(toAccountId);
 
+  if (!fromProviderId || !toProviderId) {
+    return { charge: 0, totalDebit: amount, hasCharge: false };
+  }
+
+  // Find matching charge from DB
+  const dbCharge = dbCharges.find(
+    (c) =>
+      c.fromProvider === fromProviderId &&
+      c.toProvider === toProviderId &&
+      c.isSuperAgent === isSuperAgent,
+  );
+
+  if (!dbCharge) {
+    return { charge: 0, totalDebit: amount, hasCharge: false };
+  }
+
+  const percentageCharge = Math.round(amount * (dbCharge.chargeRate / 100) * 100) / 100;
+  const flatFee = dbCharge.flatFee || 0;
+  const charge = Math.round((percentageCharge + flatFee) * 100) / 100;
   return { charge, totalDebit: amount + charge, hasCharge: true };
 }
 
 function TransferPage() {
-  const { accounts, transfers, addTransfer, addTransaction, deleteTransfer } = useFinance();
+  const { accounts, transfers, addTransfer, addTransaction, deleteTransfer, transferCharges } = useFinance();
   const b = useBalances();
 
   const [form, setForm] = useState({
     fromAccountId: accounts[0]?.id ?? "",
     toAccountId: accounts[1]?.id ?? accounts[0]?.id ?? "",
     amount: "",
-    date: dayjs().format("YYYY-MM-DD"),
+    date: today(),
+    isSuperAgent: false as boolean,
   });
 
   useEffect(() => {
@@ -105,13 +105,44 @@ function TransferPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Transfer | null>(null);
 
+  const fromAccount = accounts.find((a) => a.id === form.fromAccountId);
+  const toAccount = accounts.find((a) => a.id === form.toAccountId);
+  const BKASH_ID = "a0000000-0000-0000-0000-000000000002";
+  const CASH_ID = "a0000000-0000-0000-0000-000000000001";
+  const isBkashToCash =
+    fromAccount?.providerId === BKASH_ID &&
+    toAccount?.providerId === CASH_ID;
+  const showSuperAgent = isBkashToCash;
+
   const { charge, totalDebit, hasCharge } = useMemo(
-    () => calculateTransferCharge(form.fromAccountId, form.toAccountId, Number(form.amount) || 0, b.accountName),
-    [form.fromAccountId, form.toAccountId, form.amount, b.accountName],
+    () => calculateTransferCharge(
+      form.fromAccountId,
+      form.toAccountId,
+      Number(form.amount) || 0,
+      b.accountName,
+      (id) => accounts.find((a) => a.id === id)?.providerId,
+      transferCharges,
+      form.isSuperAgent,
+    ),
+    [form.fromAccountId, form.toAccountId, form.amount, b.accountName, accounts, transferCharges, form.isSuperAgent],
   );
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === "fromAccountId" || name === "toAccountId") {
+        const from = name === "fromAccountId" ? value : prev.fromAccountId;
+        const to = name === "toAccountId" ? value : prev.toAccountId;
+        const fromAcc = accounts.find((a) => a.id === from);
+        const toAcc = accounts.find((a) => a.id === to);
+        const isBkashCash =
+          fromAcc?.providerId === BKASH_ID &&
+          toAcc?.providerId === CASH_ID;
+        if (!isBkashCash) next.isSuperAgent = false;
+      }
+      return next;
+    });
   };
 
   const selectCls =
@@ -133,11 +164,11 @@ function TransferPage() {
         date: form.date,
         accountId: form.fromAccountId,
         category: "Transfer Charge",
-        title: `Cash Out Charge from ${b.accountName(form.fromAccountId)}`,
+        title: `Transfer Charge from ${b.accountName(form.fromAccountId)}`,
       });
     }
 
-    setForm({ ...form, amount: "" });
+    setForm({ ...form, amount: "", isSuperAgent: false });
     toast.success("Transfer saved");
     setIsSubmitting(false);
     setConfirmOpen(false);
@@ -183,7 +214,7 @@ function TransferPage() {
                 value={form.fromAccountId}
                 onChange={handleFormChange}
               >
-                {accounts.filter(a => a.id !== form.toAccountId).map((a) => (
+                {accounts.filter(a => a.id !== form.toAccountId).sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} — {b.money(b.balances.get(a.id) ?? 0)}
                   </option>
@@ -203,7 +234,7 @@ function TransferPage() {
                 value={form.toAccountId}
                 onChange={handleFormChange}
               >
-                {accounts.filter(a => a.id !== form.fromAccountId).map((a) => (
+                {accounts.filter(a => a.id !== form.fromAccountId).sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} — {b.money(b.balances.get(a.id) ?? 0)}
                   </option>
@@ -223,13 +254,39 @@ function TransferPage() {
               />
             </div>
 
+            {showSuperAgent && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-indigo-600">Super Agent</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["Yes", "No"] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setForm({ ...form, isSuperAgent: opt === "Yes" })}
+                      className={cn(
+                        "rounded-xl border py-2.5 text-sm font-semibold transition",
+                        (opt === "Yes" ? form.isSuperAgent : !form.isSuperAgent)
+                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-600"
+                          : "border-border text-muted-foreground hover:bg-muted",
+                      )}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+                {form.isSuperAgent && (
+                  <p className="text-xs text-muted-foreground">1.395% charge will apply</p>
+                )}
+              </div>
+            )}
+
             {Number(form.amount) > 0 && (
               <div className="space-y-2 rounded-lg bg-muted/50 p-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Transfer Amount</span>
                   <span className="font-medium">{b.money(Number(form.amount))}</span>
                 </div>
-                {hasCharge && charge > 0 && (
+                {hasCharge && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Transfer Charge</span>
                     <span className="font-medium">{b.money(charge)}</span>

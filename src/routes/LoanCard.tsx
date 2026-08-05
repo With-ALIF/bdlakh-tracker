@@ -119,10 +119,11 @@ export function LoanCard({ loan, onSelect }: { loan: Loan; onSelect: () => void 
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className={cn("flex items-center gap-1 rounded-full px-2 py-0.5 font-medium", stat.color)}><StatIcon className="h-3 w-3" /> {stat.label}</span>
                   <span>•</span><span>{loan.loanType}</span>
+                  {loan.increases?.some((i) => i.isSpecialNumber) && <span className="text-xs font-semibold text-indigo-500 bg-indigo-500/10 rounded-full px-2 py-0.5">Special</span>}
                   {loan.payments.length > 0 && <><span>•</span><span>Paid on {fmtDate(loan.payments[loan.payments.length - 1].date)}</span></>}
                 </div>
               ) : (
-                <div className="flex flex-wrap items-center gap-1.5"><span className={cn("rounded-full px-2.5 py-0.5 font-semibold", dir.color)}>{dirLabel(loan.direction, loan.status)}</span><span>•</span><span>{loan.loanType}</span><DueDateFooter loan={loan} /></div>
+                <div className="flex flex-wrap items-center gap-1.5"><span className={cn("rounded-full px-2.5 py-0.5 font-semibold", dir.color)}>{dirLabel(loan.direction, loan.status)}</span><span>•</span><span>{loan.loanType}</span>{loan.increases?.some((i) => i.isSpecialNumber) && <span className="text-xs font-semibold text-indigo-500 bg-indigo-500/10 rounded-full px-2 py-0.5">Special</span>}<DueDateFooter loan={loan} /></div>
               )}
             </div>
             <button onClick={onSelect} className="flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline">{loan.status === "completed" ? "View History" : "View Details"}<ChevronRight className="h-3 w-3" /></button>

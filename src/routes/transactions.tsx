@@ -9,6 +9,7 @@ import { TransactionDialog } from "@/components/TransactionDialog";
 import { ReportDialog } from "@/components/ReportDialog";
 import { useFinance } from "@/context/FinanceContext";
 import { useBalances } from "@/hooks/useBalances";
+import { now } from "@/lib/date";
 import { AccountIcon } from "@/components/AccountIcon";
 import { inRange, type RangeKey } from "@/utils/finance";
 import { Input } from "@/components/ui/input";
@@ -80,8 +81,8 @@ function TransactionsPage() {
   const [sortDesc, setSortDesc] = useState(true);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [open, setOpen] = useState(false);
-  const [customFromDate, setCustomFromDate] = useState(dayjs().startOf("month").format("YYYY-MM-DD"));
-  const [customToDate, setCustomToDate] = useState(dayjs().endOf("month").format("YYYY-MM-DD"));
+  const [customFromDate, setCustomFromDate] = useState(now().startOf("month").format("YYYY-MM-DD"));
+  const [customToDate, setCustomToDate] = useState(now().endOf("month").format("YYYY-MM-DD"));
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
@@ -148,23 +149,23 @@ function TransactionsPage() {
     const expense = rows.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
 
     let from: string;
-    let to = dayjs().format('YYYY-MM-DD');
+    let to = now().format('YYYY-MM-DD');
     if (range === 'custom') {
       from = customFromDate;
       to = customToDate;
     } else if (range === 'all') {
-      from = transactions.reduce((m, t) => (t.date < m ? t.date : m), dayjs().format('YYYY-MM-DD'));
+      from = transactions.reduce((m, t) => (t.date < m ? t.date : m), now().format('YYYY-MM-DD'));
       to = transactions.reduce((m, t) => (t.date > m ? t.date : m), from);
     } else if (range === 'today') {
       from = to;
     } else if (range === 'yesterday') {
-      from = to = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+      from = to = now().subtract(1, 'day').format('YYYY-MM-DD');
     } else if (range === 'week') {
-      from = dayjs().startOf('week').format('YYYY-MM-DD');
+      from = now().startOf('week').format('YYYY-MM-DD');
     } else if (range === 'month') {
-      from = dayjs().startOf('month').format('YYYY-MM-DD');
+      from = now().startOf('month').format('YYYY-MM-DD');
     } else {
-      from = dayjs().startOf('year').format('YYYY-MM-DD');
+      from = now().startOf('year').format('YYYY-MM-DD');
     }
 
     await generatePdfReport({
@@ -172,7 +173,7 @@ function TransactionsPage() {
       type: type === 'all' ? 'both' : type,
       from,
       to,
-      fileName: `transactions-${dayjs().format('YYYYMMDD-HHmm')}.pdf`,
+      fileName: `transactions-${now().format('YYYYMMDD-HHmm')}.pdf`,
       income,
       expense,
       accountName: (id) => b.accountName(id),
@@ -234,7 +235,7 @@ function TransactionsPage() {
             </select>
             <select className={selectCls} value={account} onChange={(e) => { setPage(1); setAccount(e.target.value); }}>
               <option value="all">All accounts</option>
-              {accounts.map((a) => (
+              {accounts.sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
                 </option>

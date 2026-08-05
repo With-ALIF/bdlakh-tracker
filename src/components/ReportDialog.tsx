@@ -13,15 +13,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFinance } from "@/context/FinanceContext";
+import { now } from "@/lib/date";
 import { useBalances } from "@/hooks/useBalances";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { generatePdfReport, type ReportType } from "@/utils/pdfReport";
 
 const PRESETS: { key: string; label: string; from: () => string; to: () => string }[] = [
-  { key: "month", label: "This Month", from: () => dayjs().startOf("month").format("YYYY-MM-DD"), to: () => dayjs().format("YYYY-MM-DD") },
-  { key: "last", label: "Last Month", from: () => dayjs().subtract(1, "month").startOf("month").format("YYYY-MM-DD"), to: () => dayjs().subtract(1, "month").endOf("month").format("YYYY-MM-DD") },
-  { key: "year", label: "This Year", from: () => dayjs().startOf("year").format("YYYY-MM-DD"), to: () => dayjs().format("YYYY-MM-DD") },
+  { key: "month", label: "This Month", from: () => now().startOf("month").format("YYYY-MM-DD"), to: () => now().format("YYYY-MM-DD") },
+  { key: "last", label: "Last Month", from: () => now().subtract(1, "month").startOf("month").format("YYYY-MM-DD"), to: () => now().subtract(1, "month").endOf("month").format("YYYY-MM-DD") },
+  { key: "year", label: "This Year", from: () => now().startOf("year").format("YYYY-MM-DD"), to: () => now().format("YYYY-MM-DD") },
 ];
 
 /** Generates an income / expense PDF report over a custom date range. */
@@ -36,8 +37,8 @@ export function ReportDialog({
   const b = useBalances();
 
   const [type, setType] = useState<ReportType>("both");
-  const [from, setFrom] = useState(dayjs().startOf("month").format("YYYY-MM-DD"));
-  const [to, setTo] = useState(dayjs().format("YYYY-MM-DD"));
+  const [from, setFrom] = useState(now().startOf("month").format("YYYY-MM-DD"));
+  const [to, setTo] = useState(now().format("YYYY-MM-DD"));
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
   const allCategories = Array.from(new Set(transactions.map((t) => t.category))).sort();

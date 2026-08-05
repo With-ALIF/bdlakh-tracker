@@ -48,6 +48,7 @@ export function LoanDetail({ loan, onBack }: { loan: Loan; onBack: () => void })
       date: inc.date,
       title: loan.direction === "receivable" ? "Additional Loan Given" : "Additional Loan Taken",
       amount: inc.amount,
+      isSpecialNumber: inc.isSpecialNumber,
     })),
     ...loan.payments.map((p) => ({
       id: p.id,
@@ -132,7 +133,7 @@ export function LoanDetail({ loan, onBack }: { loan: Loan; onBack: () => void })
           <div key={item.id} className="group flex items-center justify-between border-b border-border px-4 py-3 last:border-0">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{fmtDate(item.date)}</p>
-              <p className="mt-0.5 text-sm font-medium">{item.title}</p>
+              <p className="mt-0.5 text-sm font-medium">{item.title}{" "}{item.kind === "increase" && item.isSpecialNumber && <span className="text-xs font-semibold text-indigo-500 bg-indigo-500/10 rounded-full px-2 py-0.5">Special Number</span>}</p>
             </div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-sm">{fmt(item.amount)}</span>

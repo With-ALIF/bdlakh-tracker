@@ -98,12 +98,26 @@ function NotificationCard({
   );
 }
 
+const MAX_NOTIFICATIONS = 10;
+
 function NotificationsPage() {
   const { groups, unreadCount, markAsRead, markAllRead, ready } = useNotifications();
 
+  const limitedGroups = useMemo(() => {
+    let remaining = MAX_NOTIFICATIONS;
+    return groups
+      .map((g) => {
+        if (remaining <= 0) return { ...g, items: [] };
+        const items = g.items.slice(0, remaining);
+        remaining -= items.length;
+        return { ...g, items };
+      })
+      .filter((g) => g.items.length > 0);
+  }, [groups]);
+
   const totalNotifications = useMemo(
-    () => groups.reduce((s, g) => s + g.items.length, 0),
-    [groups],
+    () => limitedGroups.reduce((s, g) => s + g.items.length, 0),
+    [limitedGroups],
   );
 
   return (
@@ -134,7 +148,7 @@ function NotificationsPage() {
         <EmptyState icon={Bell} title="No new notifications" description="Everything looks good." />
       ) : (
         <div className="space-y-6">
-          {groups.map((group) => (
+          {limitedGroups.map((group) => (
             <section key={group.label}>
               <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 {group.label}
