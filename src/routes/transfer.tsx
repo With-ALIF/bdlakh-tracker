@@ -89,15 +89,26 @@ function TransferPage() {
     amount: "",
     date: today(),
     isSuperAgent: false as boolean,
+    chargeType: "auto" as "auto" | "custom",
+    customCharge: "",
   });
 
   useEffect(() => {
     if (accounts.length > 0) {
-      setForm((prev) => ({
-        ...prev,
-        fromAccountId: prev.fromAccountId || accounts[0]?.id || "",
-        toAccountId: prev.toAccountId || accounts[1]?.id || accounts[0]?.id || "",
-      }));
+      setForm((prev) => {
+        const fromId = prev.fromAccountId || accounts[0]?.id || "";
+        // Ensure toAccountId is never the same as fromAccountId
+        let toId = prev.toAccountId || accounts[1]?.id || accounts[0]?.id || "";
+        if (toId === fromId) {
+          const other = accounts.find((a) => a.id !== fromId);
+          toId = other?.id || toId;
+        }
+        return {
+          ...prev,
+          fromAccountId: fromId,
+          toAccountId: toId,
+        };
+      });
     }
   }, [accounts]);
 
@@ -114,7 +125,7 @@ function TransferPage() {
     toAccount?.providerId === CASH_ID;
   const showSuperAgent = isBkashToCash;
 
-  const { charge, totalDebit, hasCharge } = useMemo(
+  const { charge: autoCharge, totalDebit: autoTotalDebit, hasCharge: autoHasCharge } = useMemo(
     () => calculateTransferCharge(
       form.fromAccountId,
       form.toAccountId,
@@ -127,19 +138,48 @@ function TransferPage() {
     [form.fromAccountId, form.toAccountId, form.amount, b.accountName, accounts, transferCharges, form.isSuperAgent],
   );
 
+  const charge = form.chargeType === "custom" ? (Number(form.customCharge) || 0) : autoCharge;
+  const totalDebit = (Number(form.amount) || 0) + charge;
+  const hasCharge = form.chargeType === "custom" ? charge > 0 : autoHasCharge;
+
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setForm((prev) => {
       const next = { ...prev, [name]: value };
       if (name === "fromAccountId" || name === "toAccountId") {
-        const from = name === "fromAccountId" ? value : prev.fromAccountId;
-        const to = name === "toAccountId" ? value : prev.toAccountId;
+        let from = name === "fromAccountId" ? value : prev.fromAccountId;
+        let to = name === "toAccountId" ? value : prev.toAccountId;
+
+        // If from and to ended up the same, swap them or pick next available
+        if (from === to) {
+          if (name === "fromAccountId") {
+            // User changed "From" to what was "To" → swap: old "From" becomes new "To"
+            to = prev.fromAccountId;
+          } else {
+            // User changed "To" to what was "From" → swap: old "To" becomes new "From"
+            from = prev.toAccountId;
+          }
+          // Safety: if swap still results in same (shouldn't happen), pick first different account
+          if (from === to) {
+            const other = accounts.find((a) => a.id !== from);
+            if (other) {
+              if (name === "fromAccountId") to = other.id;
+              else from = other.id;
+            }
+          }
+        }
+
+        next.fromAccountId = from;
+        next.toAccountId = to;
+
         const fromAcc = accounts.find((a) => a.id === from);
         const toAcc = accounts.find((a) => a.id === to);
         const isBkashCash =
           fromAcc?.providerId === BKASH_ID &&
           toAcc?.providerId === CASH_ID;
         if (!isBkashCash) next.isSuperAgent = false;
+        next.chargeType = "auto";
+        next.customCharge = "";
       }
       return next;
     });
@@ -148,7 +188,7 @@ function TransferPage() {
   const selectCls =
     "h-10 w-full rounded-lg border border-input bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40";
 
-  const handleConfirmTransfer = () => {
+  const handleConfirmTransfer = async () => {
     const amount = Number(form.amount);
     addTransfer({
       fromAccountId: form.fromAccountId,
@@ -157,8 +197,8 @@ function TransferPage() {
       date: form.date,
     });
 
-    if (hasCharge && charge > 0) {
-      addTransaction({
+    if (charge > 0) {
+      const txCreated = await addTransaction({
         type: "expense",
         amount: charge,
         date: form.date,
@@ -166,9 +206,12 @@ function TransferPage() {
         category: "Transfer Charge",
         title: `Transfer Charge from ${b.accountName(form.fromAccountId)}`,
       });
+      if (!txCreated) {
+        toast.error("Charge transaction failed to save");
+      }
     }
 
-    setForm({ ...form, amount: "", isSuperAgent: false });
+    setForm({ ...form, amount: "", isSuperAgent: false, chargeType: "auto", customCharge: "" });
     toast.success("Transfer saved");
     setIsSubmitting(false);
     setConfirmOpen(false);
@@ -214,7 +257,7 @@ function TransferPage() {
                 value={form.fromAccountId}
                 onChange={handleFormChange}
               >
-                {accounts.filter(a => a.id !== form.toAccountId).sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
+                {accounts.sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} — {b.money(b.balances.get(a.id) ?? 0)}
                   </option>
@@ -280,13 +323,45 @@ function TransferPage() {
               </div>
             )}
 
+            {autoHasCharge && autoCharge > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Transfer Charge</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, chargeType: "auto", customCharge: "" })}
+                    className={cn(
+                      "rounded-xl border py-2.5 text-sm font-semibold transition",
+                      form.chargeType === "auto"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    Auto — {b.money(autoCharge)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, chargeType: "custom", customCharge: "0" })}
+                    className={cn(
+                      "rounded-xl border py-2.5 text-sm font-semibold transition",
+                      form.chargeType === "custom"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    No Charge — ৳0
+                  </button>
+                </div>
+              </div>
+            )}
+
             {Number(form.amount) > 0 && (
               <div className="space-y-2 rounded-lg bg-muted/50 p-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Transfer Amount</span>
                   <span className="font-medium">{b.money(Number(form.amount))}</span>
                 </div>
-                {hasCharge && (
+                {(autoHasCharge || form.chargeType === "custom") && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Transfer Charge</span>
                     <span className="font-medium">{b.money(charge)}</span>
@@ -383,18 +458,18 @@ function TransferPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>Confirm Transfer</AlertDialogTitle>
               <AlertDialogDescription>
-                <p>Please review the details before confirming the transfer.</p>
-                <div className="mt-4 space-y-2 rounded-lg border border-border bg-muted/50 p-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Transfer Charge</span>
-                    <span className="font-medium">{b.money(charge)}</span>
-                  </div>
-                  <div className="flex justify-between font-semibold">
-                    <span>Total to Debit</span>
-                    <span>{b.money(totalDebit)}</span>
-                  </div>
-                </div>
+                Please review the details before confirming the transfer.
               </AlertDialogDescription>
+              <div className="mt-4 space-y-2 rounded-lg border border-border bg-muted/50 p-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Transfer Charge</span>
+                  <span className="font-medium">{b.money(charge)}</span>
+                </div>
+                <div className="flex justify-between font-semibold">
+                  <span>Total to Debit</span>
+                  <span>{b.money(totalDebit)}</span>
+                </div>
+              </div>
             </AlertDialogHeader>
             <AlertDialogFooter><AlertDialogCancel onClick={() => setIsSubmitting(false)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleConfirmTransfer}>Confirm</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>

@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import dayjs from "dayjs";
 import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
 import isSameOrBefore from "dayjs/plugin/isSameOrBefore";
-import { Pencil, Trash2, Search, Receipt, ArrowUpDown, FileDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Pencil, Trash2, Search, Receipt, ArrowUpDown, FileDown, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
 import { TransactionDialog } from "@/components/TransactionDialog";
 import { ReportDialog } from "@/components/ReportDialog";
@@ -15,7 +15,7 @@ import { inRange, type RangeKey } from "@/utils/finance";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { PageHeader, Panel, EmptyState } from "@/components/ui-kit";
+import { PageHeader, Panel, EmptyState, StatCard } from "@/components/ui-kit";
 import type { Transaction } from "@/types";
 import {
   AlertDialog,
@@ -133,6 +133,16 @@ function TransactionsPage() {
       .sort((a, c) => (sortDesc ? c.date.localeCompare(a.date) : a.date.localeCompare(c.date)));
   }, [transactions, query, range, customFromDate, customToDate, type, account, category, sortDesc]);
 
+  const totalIncome = useMemo(
+    () => rows.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0),
+    [rows],
+  );
+  const totalExpense = useMemo(
+    () => rows.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0),
+    [rows],
+  );
+  const finalBalance = totalIncome - totalExpense;
+
   // Reset to page 1 when filters change
   const resetPage = () => setPage(1);
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -196,6 +206,12 @@ function TransactionsPage() {
           </div>
         }
       />
+
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <StatCard label="Total Income" value={b.money(totalIncome)} icon={TrendingUp} tone="success" hint={`${rows.filter((t) => t.type === "income").length} transactions`} />
+        <StatCard label="Total Expense" value={b.money(totalExpense)} icon={TrendingDown} tone="danger" hint={`${rows.filter((t) => t.type === "expense").length} transactions`} />
+        <StatCard label="Final Balance" value={b.money(finalBalance)} icon={Wallet} tone="primary" hint={finalBalance >= 0 ? "Net positive" : "Net negative"} />
+      </div>
 
       <Panel className="mb-4">
         <div className="space-y-3">

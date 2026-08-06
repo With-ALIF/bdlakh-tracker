@@ -227,7 +227,7 @@ interface FinanceContextValue extends AppData {
   incomeCategories: string[];
   expenseCategories: string[];
   transferCharges: TransferCharge[];
-  addTransaction: (t: Omit<Transaction, "id" | "createdAt">) => void;
+  addTransaction: (t: Omit<Transaction, "id" | "createdAt">) => Promise<boolean>;
   updateTransaction: (id: string, t: Omit<Transaction, "id" | "createdAt">) => void;
   deleteTransaction: (id: string) => void;
   addTransfer: (t: Omit<Transfer, "id" | "createdAt">) => void;
@@ -468,39 +468,27 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       const cached = catCacheRef.current.get(key);
       if (cached) return cached;
 
-      // 2) look up in default categories table first
-      const { data: defaultMatch } = await supabase
+      // 2) look up in categories table (includes both default + user custom)
+      const { data: match } = await supabase
         .from("categories")
         .select("id")
         .ilike("name", name)
         .eq("is_income", isIncome)
+        .or(`user_id.is.null,user_id.eq.${userId}`)
         .maybeSingle();
 
-      if (defaultMatch) {
-        catCacheRef.current.set(key, defaultMatch.id);
-        return defaultMatch.id;
+      if (match) {
+        catCacheRef.current.set(key, match.id);
+        return match.id;
       }
 
-      // 3) look up in user_categories table
-      const { data: userMatch } = await supabase
-        .from("user_categories")
-        .select("id")
-        .ilike("name", name)
-        .eq("is_income", isIncome)
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (userMatch) {
-        catCacheRef.current.set(key, userMatch.id);
-        return userMatch.id;
-      }
-
-      // 4) genuinely new → create in user_categories
+      // 3) genuinely new → create in categories table with user_id
       const { data: created, error: createErr } = await supabase
-        .from("user_categories")
+        .from("categories")
         .insert({
           name,
           is_income: isIncome,
+          is_default: false,
           is_enabled: true,
           user_id: userId,
         })
@@ -577,9 +565,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   /* ─── CRUD ──────────────────────────────────────────────── */
 
   const addTransaction = useCallback(
-    (t: Omit<Transaction, "id" | "createdAt">) => {
-      if (!userId) return;
-      (async () => {
+    (t: Omit<Transaction, "id" | "createdAt">): Promise<boolean> => {
+      if (!userId) return Promise.resolve(false);
+      return (async () => {
         try {
           const rawWalletId =
             data.accounts.find((a) => a.id === t.accountId)?.id ??
@@ -605,6 +593,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
           if (error) {
             console.error("addTransaction Supabase error:", error);
+            return false;
           }
           if (row) {
             const catMap: Record<string, string> = {};
@@ -613,9 +602,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
               ...d,
               transactions: [rowToTransaction(row, catMap), ...d.transactions],
             }));
+            return true;
           }
+          return false;
         } catch (err) {
           console.error("addTransaction failed", err);
+          return false;
         }
       })();
     },
@@ -724,17 +716,40 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (!userId) return;
       (async () => {
         try {
+          // Find the transfer so we can locate its charge transaction
+          const transfer = data.transfers.find((t) => t.id === id);
+
           await supabase.from("transfers").delete().eq("id", id);
+
+          // Find and delete the associated "Transfer Charge" transaction
+          let chargeId: string | null = null;
+          if (transfer) {
+            const chargeTx = data.transactions.find(
+              (tx) =>
+                tx.category === "Transfer Charge" &&
+                tx.accountId === transfer.fromAccountId &&
+                tx.date === transfer.date &&
+                tx.type === "expense",
+            );
+            if (chargeTx) {
+              chargeId = chargeTx.id;
+              await supabase.from("transactions").delete().eq("id", chargeTx.id);
+            }
+          }
+
           patch((d) => ({
             ...d,
             transfers: d.transfers.filter((x) => x.id !== id),
+            transactions: chargeId
+              ? d.transactions.filter((x) => x.id !== chargeId)
+              : d.transactions,
           }));
         } catch (err) {
           console.error("deleteTransfer failed", err);
         }
       })();
     },
-    [userId, patch],
+    [userId, data.transfers, data.transactions, patch],
   );
 
   const addAccount = useCallback(

@@ -162,6 +162,8 @@ insert into public.categories (user_id, name, is_income, is_default) values
 (null, 'Savings',         false, true),
 (null, 'Entertainment',   false, true),
 (null, 'Travel',          false, true),
+(null, 'Transfer Charge', false, true),
+(null, 'Transfer',        false, true),
 (null, 'Others',          false, true);
 
 -- ─────────────────────────────────────────────────────────────
