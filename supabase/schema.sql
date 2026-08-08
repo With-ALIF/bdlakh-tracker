@@ -221,7 +221,7 @@ create table public.transactions (
   id               uuid primary key default gen_random_uuid(),
   user_id          uuid not null references public.users(id) on delete cascade,
   wallet_id        uuid not null references public.wallets(id) on delete cascade,
-  category_id      uuid references public.categories(id),
+  category_id      uuid, -- references categories OR user_categories (both have uuid PKs)
   title            text not null,
   amount           numeric(12,2) not null,
   is_income        boolean not null default false,

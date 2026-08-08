@@ -468,27 +468,40 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       const cached = catCacheRef.current.get(key);
       if (cached) return cached;
 
-      // 2) look up in categories table (includes both default + user custom)
-      const { data: match } = await supabase
+      // 2) look up in categories table (default categories, user_id IS NULL)
+      const { data: defaultMatch } = await supabase
         .from("categories")
         .select("id")
         .ilike("name", name)
         .eq("is_income", isIncome)
-        .or(`user_id.is.null,user_id.eq.${userId}`)
+        .is("user_id", null)
         .maybeSingle();
 
-      if (match) {
-        catCacheRef.current.set(key, match.id);
-        return match.id;
+      if (defaultMatch) {
+        catCacheRef.current.set(key, defaultMatch.id);
+        return defaultMatch.id;
       }
 
-      // 3) genuinely new → create in categories table with user_id
+      // 3) look up in user_categories table (user custom categories)
+      const { data: userMatch } = await supabase
+        .from("user_categories")
+        .select("id")
+        .ilike("name", name)
+        .eq("is_income", isIncome)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (userMatch) {
+        catCacheRef.current.set(key, userMatch.id);
+        return userMatch.id;
+      }
+
+      // 4) genuinely new → create in user_categories table
       const { data: created, error: createErr } = await supabase
-        .from("categories")
+        .from("user_categories")
         .insert({
           name,
           is_income: isIncome,
-          is_default: false,
           is_enabled: true,
           user_id: userId,
         })
@@ -1381,12 +1394,19 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
             supabase.from("loans").delete().eq("user_id", userId),
           ]);
 
-          // build category maps from existing categories table
+          // build category maps from both categories and user_categories tables
           const catNameToId: Record<string, string> = {};
           const { data: cats } = await supabase
             .from("categories")
             .select("id,name");
           (cats ?? []).forEach((c: any) => {
+            catNameToId[c.name] = c.id;
+          });
+          const { data: userCats } = await supabase
+            .from("user_categories")
+            .select("id,name")
+            .eq("user_id", userId);
+          (userCats ?? []).forEach((c: any) => {
             catNameToId[c.name] = c.id;
           });
 

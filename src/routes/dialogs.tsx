@@ -24,11 +24,11 @@ export function PaymentDialog({ open, onOpenChange, loanId, defaultAccountId, de
   const [form, setForm] = useState({
     amount: defaultAmount ? String(defaultAmount) : "",
     date: t,
-    accountId: defaultAccountId ?? accounts[0]?.id ?? "",
+    accountId: defaultAccountId ?? accounts.find((a) => a.name === "Cash")?.id ?? accounts[0]?.id ?? "",
   });
 
   const handleOpen = (v: boolean) => {
-    if (v) setForm({ amount: defaultAmount ? String(defaultAmount) : "", date: today(), accountId: defaultAccountId ?? accounts[0]?.id ?? "" });
+    if (v) setForm({ amount: defaultAmount ? String(defaultAmount) : "", date: today(), accountId: defaultAccountId ?? accounts.find((a) => a.name === "Cash")?.id ?? accounts[0]?.id ?? "" });
     onOpenChange(v);
   };
 
@@ -77,12 +77,12 @@ export function IncreaseDialog({ open, onOpenChange, loanId, defaultAccountId, d
   const [form, setForm] = useState({
     amount: "",
     date: t,
-    accountId: defaultAccountId ?? accounts[0]?.id ?? "",
+    accountId: defaultAccountId ?? accounts.find((a) => a.name === "Cash")?.id ?? accounts[0]?.id ?? "",
     isSpecialNumber: true as boolean,
   });
 
   const handleOpen = (v: boolean) => {
-    if (v) setForm({ amount: "", date: today(), accountId: defaultAccountId ?? accounts[0]?.id ?? "", isSpecialNumber: true });
+    if (v) setForm({ amount: "", date: today(), accountId: defaultAccountId ?? accounts.find((a) => a.name === "Cash")?.id ?? accounts[0]?.id ?? "", isSpecialNumber: true });
     onOpenChange(v);
   };
 
@@ -118,7 +118,7 @@ export function IncreaseDialog({ open, onOpenChange, loanId, defaultAccountId, d
         type: "expense",
         amount: specialCharge,
         date: form.date,
-        accountId: form.accountId || (defaultAccountId ?? accounts[0]?.id ?? ""),
+        accountId: form.accountId || (defaultAccountId ?? accounts.find((a) => a.name === "Cash")?.id ?? accounts[0]?.id ?? ""),
         category: "Transfer Charge",
         title: `${selectedAccount?.name ?? "Account"} ${flatFee} Tk Charge`,
       });

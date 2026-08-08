@@ -42,13 +42,15 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
   const { accounts, incomeCategories, expenseCategories, addTransaction, updateTransaction, transferCharges } = useFinance();
   const b = useBalances();
 
+  const defaultAccId = accounts.find((a) => a.name === "Cash")?.id ?? accounts[0]?.id ?? "";
+
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       title: "",
       amount: "" as unknown as number,
       type: "expense",
-      accountId: accounts[0]?.id ?? "",
+      accountId: defaultAccId,
       category: "Food",
       date: today(),
     },
@@ -72,7 +74,7 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
       setIsBkashCharge(false);
       return;
     }
-    const defaultAccId = accounts[0]?.id ?? "";
+    const accId = accounts.find((a) => a.name === "Cash")?.id ?? accounts[0]?.id ?? "";
     form.reset(
       transaction
         ? { ...transaction }
@@ -80,7 +82,7 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
             title: "",
             amount: "" as unknown as number,
             type: "expense",
-            accountId: defaultAccId,
+            accountId: accId,
             category: "Food",
             date: today(),
           },
