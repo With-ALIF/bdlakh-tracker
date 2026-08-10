@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import dayjs from "dayjs";
 import {
   LogOut,
@@ -14,6 +14,11 @@ import {
   Camera,
   Info,
   Globe,
+  Upload,
+  ImagePlus,
+  Link2,
+  X,
+  Trash2,
 } from "lucide-react";
 import { AppLayout } from "@/layouts/AppLayout";
 import { PageHeader, Panel } from "@/components/ui-kit";
@@ -30,6 +35,16 @@ import { toast } from "sonner";
 import { CategoryManager } from "@/components/CategoryManager";
 import { supabase } from "@/lib/supabase";
 import { normalizePhotoUrl } from "@/routes/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -58,8 +73,15 @@ function ProfilePage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [photoUrl, setPhotoUrl] = useState("");
   const [savingPhoto, setSavingPhoto] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [photoTab, setPhotoTab] = useState<"upload" | "url">("upload");
+  const [previewFile, setPreviewFile] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user?.photoUrl) {
@@ -118,12 +140,125 @@ function ProfilePage() {
       if (error) throw error;
       await refetchProfile();
       toast.success("Photo updated successfully");
+      setPhotoUrl("");
     } catch (err: any) {
       toast.error(err?.message || "Failed to update photo");
     } finally {
       setSavingPhoto(false);
     }
   };
+
+  const compressImage = useCallback(
+    (file: File, maxSize = 256): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let w = img.width;
+          let h = img.height;
+          if (w > h) {
+            if (w > maxSize) { h = Math.round(h * maxSize / w); w = maxSize; }
+          } else {
+            if (h > maxSize) { w = Math.round(w * maxSize / h); h = maxSize; }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(img, 0, 0, w, h);
+          // Export as JPEG data URL (quality 0.85 keeps it small)
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+          resolve(dataUrl);
+        };
+        img.onerror = () => reject(new Error("Failed to read image"));
+        img.src = URL.createObjectURL(file);
+      }),
+    [],
+  );
+
+  const handleFileUpload = useCallback(
+    async (file: File) => {
+      if (!user?.id) return;
+
+      // Validate file type
+      const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+      if (!allowedTypes.includes(file.type)) {
+        toast.error("Only JPG, PNG, WebP, and GIF images are allowed");
+        return;
+      }
+
+      // Validate file size (max 5MB before compression)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Image must be smaller than 5MB");
+        return;
+      }
+
+      // Show preview
+      const objectUrl = URL.createObjectURL(file);
+      setPreviewFile(objectUrl);
+
+      setUploadingPhoto(true);
+      try {
+        // Compress & resize to 256×256 data URL
+        const dataUrl = await compressImage(file, 256);
+
+        // Save directly to user_photos via RPC
+        const { error } = await supabase.rpc("upsert_user_photo", {
+          p_user_id: user.id,
+          p_photo_url: dataUrl,
+        });
+        if (error) throw error;
+
+        await refetchProfile();
+        toast.success("Photo uploaded successfully!");
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to upload photo");
+      } finally {
+        setUploadingPhoto(false);
+        setPreviewFile(null);
+        URL.revokeObjectURL(objectUrl);
+      }
+    },
+    [user?.id, refetchProfile, compressImage],
+  );
+
+  const handleRemovePhoto = async () => {
+    if (!user?.id) return;
+    setSavingPhoto(true);
+    try {
+      const { error } = await supabase.rpc("upsert_user_photo", {
+        p_user_id: user.id,
+        p_photo_url: null,
+      });
+      if (error) throw error;
+      await refetchProfile();
+      setPhotoUrl("");
+      toast.success("Photo removed");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to remove photo");
+    } finally {
+      setSavingPhoto(false);
+    }
+  };
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) handleFileUpload(file);
+    },
+    [handleFileUpload],
+  );
+
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) handleFileUpload(file);
+      // Reset input so the same file can be re-selected
+      e.target.value = "";
+    },
+    [handleFileUpload],
+  );
 
   return (
     <AppLayout>
@@ -199,36 +334,203 @@ function ProfilePage() {
         </Panel>
 
         {/* Profile Photo */}
-        <Panel>
-          <div className="mb-4 flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary-soft text-primary">
-              <Camera className="h-4 w-4" />
-            </span>
-            <h3 className="text-sm font-bold">Profile Photo</h3>
-          </div>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Photo URL
-              </Label>
-              <Input
-                type="text"
-                value={photoUrl}
-                onChange={(e) => setPhotoUrl(e.target.value)}
-                placeholder="Paste your photo URL here"
-                autoComplete="off"
+        <Panel className="transition-colors">
+          <div
+            className="flex cursor-pointer items-center justify-between"
+            onClick={() => setPhotoOpen((prev) => !prev)}
+          >
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-primary-soft text-primary">
+                <Camera className="h-5 w-5" />
+              </span>
+              <div className="text-left">
+                <h3 className="text-sm font-bold">Profile Photo</h3>
+                <p className="text-xs text-muted-foreground">
+                  {user?.photoUrl ? "Update or remove your profile photo" : "Upload a profile photo"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {user?.photoUrl && photoOpen && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmRemoveOpen(true);
+                  }}
+                  disabled={savingPhoto}
+                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Remove
+                </button>
+              )}
+              <ChevronDown
+                className={cn(
+                  "h-5 w-5 text-muted-foreground transition-transform duration-200",
+                  photoOpen && "rotate-180",
+                )}
               />
             </div>
-            <Button onClick={handleSavePhoto} disabled={savingPhoto} className="gap-2">
-              {savingPhoto ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4" />
-              )}
-              {savingPhoto ? "Saving..." : "Save Photo"}
-            </Button>
           </div>
+
+          {photoOpen && (
+            <div className="mt-4 border-t border-border pt-4">
+              {/* Current Avatar Preview */}
+              <div className="mb-4 flex items-center gap-3">
+                <UserAvatar
+                  photoUrl={previewFile || user?.photoUrl}
+                  displayName={user?.displayName}
+                  email={user?.email}
+                  className="h-16 w-16 text-lg font-bold ring-2 ring-border ring-offset-2 ring-offset-background"
+                />
+                <div className="text-sm">
+                  <p className="font-medium text-foreground">
+                    {user?.photoUrl ? "Current photo" : "No photo set"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Upload an image or paste a URL below
+                  </p>
+                </div>
+              </div>
+
+              {/* Tab Switcher */}
+              <div className="mb-3 flex rounded-lg bg-muted p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPhotoTab("upload")}
+                  className={cn(
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
+                    photoTab === "upload"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Upload
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPhotoTab("url")}
+                  className={cn(
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
+                    photoTab === "url"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  URL
+                </button>
+              </div>
+
+              {/* Upload Tab */}
+              {photoTab === "upload" && (
+                <div className="space-y-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragOver(true);
+                    }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={handleDrop}
+                    onClick={() => !uploadingPhoto && fileInputRef.current?.click()}
+                    className={cn(
+                      "relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 transition-all",
+                      dragOver
+                        ? "border-primary bg-primary/5 scale-[1.01]"
+                        : "border-border hover:border-primary/50 hover:bg-accent/30",
+                      uploadingPhoto && "pointer-events-none opacity-60",
+                    )}
+                  >
+                    {uploadingPhoto ? (
+                      <>
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <p className="text-sm font-medium text-primary">Uploading...</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid h-12 w-12 place-items-center rounded-xl bg-primary-soft text-primary">
+                          <ImagePlus className="h-6 w-6" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-sm font-medium text-foreground">
+                            {dragOver ? "Drop image here" : "Click or drag image here"}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            JPG, PNG, WebP, GIF — max 5MB
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* URL Tab */}
+              {photoTab === "url" && (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Photo URL
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        value={photoUrl}
+                        onChange={(e) => setPhotoUrl(e.target.value)}
+                        placeholder="https://example.com/photo.jpg"
+                        autoComplete="off"
+                        className="flex-1"
+                      />
+                      <Button
+                        onClick={handleSavePhoto}
+                        disabled={savingPhoto || !photoUrl.trim()}
+                        size="default"
+                        className="gap-1.5 shrink-0"
+                      >
+                        {savingPhoto ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4" />
+                        )}
+                        {savingPhoto ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </Panel>
+
+        {/* Remove Photo Confirmation Dialog */}
+        <AlertDialog open={confirmRemoveOpen} onOpenChange={setConfirmRemoveOpen}>
+          <AlertDialogContent className="rounded-2xl sm:max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove Profile Photo?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to remove your profile photo? Your avatar will display your name initial instead.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleRemovePhoto}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Remove Photo
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* About Section */}
         <AboutSection />
