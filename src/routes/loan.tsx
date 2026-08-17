@@ -42,7 +42,7 @@ function LoanPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("active");
 
   const selectedLoan = loans.find((l) => l.id === selectedId) ?? null;
 
@@ -107,10 +107,10 @@ function LoanPage() {
               <SelectValue placeholder="Filter loans" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="active">Active</SelectItem>
               <SelectItem value="all">All Loans</SelectItem>
               <SelectItem value="receivable">Receivable</SelectItem>
               <SelectItem value="payable">Payable</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
             </SelectContent>
           </Select>

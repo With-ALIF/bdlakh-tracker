@@ -45,6 +45,7 @@ export const Route = createFileRoute("/wallets")({
 
 function WalletsPage() {
   const { accounts, addAccount, updateAccount, deleteAccount } = useFinance();
+  const visibleAccounts = accounts.filter((a) => a.type !== "savings");
   const b = useBalances();
   const [editing, setEditing] = useState<Account | null>(null);
   const [open, setOpen] = useState(false);
@@ -118,7 +119,7 @@ function WalletsPage() {
         </div>
       ) : (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {accounts.map((a) => {
+          {visibleAccounts.map((a) => {
             return (
               <div key={a.id} className="card-surface animate-rise overflow-hidden p-5">
                 <span className="mb-4 block h-1.5 w-12 rounded-full" style={{ backgroundColor: a.color }} />

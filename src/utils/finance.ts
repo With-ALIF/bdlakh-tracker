@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import type { Account, Transaction, Transfer } from "@/types";
+import type { Account, SavingContribution, Transaction, Transfer } from "@/types";
 
 /** Formatting + derived-data helpers. */
 
@@ -13,11 +13,12 @@ export function formatMoney(amount: number, currency = "৳", locale = "en-US") 
 
 export const formatDate = (d: string, f = "DD MMM YYYY") => dayjs(d).format(f);
 
-/** Live balance = opening + income - expense +/- transfers. */
+/** Live balance = opening + income - expense +/- transfers (including savings transfers). */
 export function accountBalance(
   account: Account,
   transactions: Transaction[],
   transfers: Transfer[],
+  savings: SavingContribution[] = [],
 ) {
   let bal = account.openingBalance;
   for (const t of transactions) {
@@ -27,6 +28,10 @@ export function accountBalance(
   for (const t of transfers) {
     if (t.fromAccountId === account.id) bal -= t.amount;
     if (t.toAccountId === account.id) bal += t.amount;
+  }
+  // Backwards compatibility for legacy savings contributions not linked to a transfer row
+  for (const s of savings) {
+    if (s.walletId === account.id && !s.transferId) bal -= s.amount;
   }
   return bal;
 }

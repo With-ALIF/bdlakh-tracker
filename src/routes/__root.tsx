@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { SavingsProvider } from "@/context/SavingsContext";
 import { FinanceProvider } from "@/context/FinanceContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -139,11 +140,13 @@ function RootComponent() {
       <ThemeProvider>
         <AuthProvider>
           <FinanceProvider>
+            <SavingsProvider>
             <NotificationProvider>
               {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
               <Outlet />
               <Toaster position="top-center" richColors />
             </NotificationProvider>
+            </SavingsProvider>
           </FinanceProvider>
         </AuthProvider>
       </ThemeProvider>

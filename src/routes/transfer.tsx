@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-import { ArrowLeftRight, ArrowRight, Trash2 } from "lucide-react";
+import { ArrowLeftRight, ArrowUpDown, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/layouts/AppLayout";
 import { PageHeader, Panel, EmptyState } from "@/components/ui-kit";
 import { useFinance } from "@/context/FinanceContext";
+import { useSavings } from "@/context/SavingsContext";
 import { useBalances } from "@/hooks/useBalances";
 import { today } from "@/lib/date";
 import { AccountIcon } from "@/components/AccountIcon";
@@ -38,9 +39,6 @@ export const Route = createFileRoute("/transfer")({
   component: TransferPage,
 });
 
-/**
- * Calculates the charge for a transfer using DB-stored charges.
- */
 function calculateTransferCharge(
   fromAccountId: string,
   toAccountId: string,
@@ -61,7 +59,6 @@ function calculateTransferCharge(
     return { charge: 0, totalDebit: amount, hasCharge: false };
   }
 
-  // Find matching charge from DB
   const dbCharge = dbCharges.find(
     (c) =>
       c.fromProvider === fromProviderId &&
@@ -81,24 +78,34 @@ function calculateTransferCharge(
 
 function TransferPage() {
   const { accounts, transfers, addTransfer, addTransaction, deleteTransfer, transferCharges } = useFinance();
+  const { goals, addContribution } = useSavings();
   const b = useBalances();
 
+  const transferableAccounts = useMemo(
+    () => accounts.filter((a) => a.type !== "savings"),
+    [accounts],
+  );
+
   const [form, setForm] = useState({
-    fromAccountId: accounts[0]?.id ?? "",
-    toAccountId: accounts[1]?.id ?? accounts[0]?.id ?? "",
+    fromAccountId: transferableAccounts[0]?.id ?? accounts[0]?.id ?? "",
+    toAccountId: accounts.find((a) => a.id !== (transferableAccounts[0]?.id ?? ""))?.id ?? "",
     amount: "",
     date: today(),
     isSuperAgent: false as boolean,
     chargeType: "auto" as "auto" | "custom",
     customCharge: "",
+    goalId: "",
+    note: "",
   });
 
   useEffect(() => {
     if (accounts.length > 0) {
       setForm((prev) => {
-        const fromId = prev.fromAccountId || accounts[0]?.id || "";
-        // Ensure toAccountId is never the same as fromAccountId
-        let toId = prev.toAccountId || accounts[1]?.id || accounts[0]?.id || "";
+        const fromId =
+          prev.fromAccountId && accounts.some((a) => a.id === prev.fromAccountId && a.type !== "savings")
+            ? prev.fromAccountId
+            : transferableAccounts[0]?.id || accounts[0]?.id || "";
+        let toId = prev.toAccountId || accounts.find((a) => a.id !== fromId)?.id || "";
         if (toId === fromId) {
           const other = accounts.find((a) => a.id !== fromId);
           toId = other?.id || toId;
@@ -115,9 +122,26 @@ function TransferPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Transfer | null>(null);
+  const [sortDesc, setSortDesc] = useState(false);
+
+  const displayedTransfers = useMemo(() => {
+    return [...transfers].sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return sortDesc ? dateB - dateA : dateA - dateB;
+    });
+  }, [transfers, sortDesc]);
+
+  const PAGE_SIZE = 5;
+  const [page, setPage] = useState(0);
+  const totalPages = Math.ceil(displayedTransfers.length / PAGE_SIZE);
+  const pagedTransfers = displayedTransfers.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  useEffect(() => { setPage(0); }, [transfers, sortDesc]);
 
   const fromAccount = accounts.find((a) => a.id === form.fromAccountId);
   const toAccount = accounts.find((a) => a.id === form.toAccountId);
+  const toIsSavings = toAccount?.type === "savings";
   const BKASH_ID = "a0000000-0000-0000-0000-000000000002";
   const CASH_ID = "a0000000-0000-0000-0000-000000000001";
   const isBkashToCash =
@@ -150,18 +174,18 @@ function TransferPage() {
         let from = name === "fromAccountId" ? value : prev.fromAccountId;
         let to = name === "toAccountId" ? value : prev.toAccountId;
 
-        // If from and to ended up the same, swap them or pick next available
         if (from === to) {
           if (name === "fromAccountId") {
-            // User changed "From" to what was "To" → swap: old "From" becomes new "To"
             to = prev.fromAccountId;
           } else {
-            // User changed "To" to what was "From" → swap: old "To" becomes new "From"
             from = prev.toAccountId;
           }
-          // Safety: if swap still results in same (shouldn't happen), pick first different account
+          if (accounts.find((a) => a.id === from)?.type === "savings") {
+            const other = accounts.find((a) => a.id !== to && a.id !== from && a.type !== "savings");
+            from = other?.id ?? from;
+          }
           if (from === to) {
-            const other = accounts.find((a) => a.id !== from);
+            const other = accounts.find((a) => a.id !== from && a.type !== "savings");
             if (other) {
               if (name === "fromAccountId") to = other.id;
               else from = other.id;
@@ -190,6 +214,28 @@ function TransferPage() {
 
   const handleConfirmTransfer = async () => {
     const amount = Number(form.amount);
+
+    if (toIsSavings) {
+      const ok = await addContribution({
+        goalId: form.goalId,
+        walletId: form.fromAccountId,
+        amount,
+        date: form.date,
+        note: form.note.trim() || undefined,
+      });
+      if (!ok) {
+        toast.error("Could not save this saving");
+        setIsSubmitting(false);
+        setConfirmOpen(false);
+        return;
+      }
+      setForm({ ...form, amount: "", isSuperAgent: false, chargeType: "auto", customCharge: "", goalId: "", note: "" });
+      toast.success("Saving added");
+      setIsSubmitting(false);
+      setConfirmOpen(false);
+      return;
+    }
+
     addTransfer({
       fromAccountId: form.fromAccountId,
       toAccountId: form.toAccountId,
@@ -211,7 +257,7 @@ function TransferPage() {
       }
     }
 
-    setForm({ ...form, amount: "", isSuperAgent: false, chargeType: "auto", customCharge: "" });
+    setForm({ ...form, amount: "", isSuperAgent: false, chargeType: "auto", customCharge: "", goalId: "", note: "" });
     toast.success("Transfer saved");
     setIsSubmitting(false);
     setConfirmOpen(false);
@@ -231,6 +277,21 @@ function TransferPage() {
       setIsSubmitting(false);
       return;
     }
+    if (fromAccount?.type === "savings") {
+      toast.error("Transfers from a savings wallet are not allowed");
+      setIsSubmitting(false);
+      return;
+    }
+    if (toIsSavings && !form.goalId) {
+      toast.error("Choose a savings goal for this saving");
+      setIsSubmitting(false);
+      return;
+    }
+    if (toIsSavings && !form.note.trim()) {
+      toast.error("Add a note for this saving");
+      setIsSubmitting(false);
+      return;
+    }
 
     const currentBal = b.balances.get(form.fromAccountId) ?? 0;
     if (totalDebit > currentBal) {
@@ -246,9 +307,10 @@ function TransferPage() {
     <AppLayout>
       <PageHeader title="Transfer" subtitle="Move money between your accounts" />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-        <Panel title="New transfer">
-          <form onSubmit={submit} className="space-y-4">
+      <div className="grid gap-4 overflow-hidden lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+        <div className="min-w-0">
+          <Panel title="New transfer">
+            <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase text-muted-foreground">From</Label>
               <select
@@ -257,7 +319,7 @@ function TransferPage() {
                 value={form.fromAccountId}
                 onChange={handleFormChange}
               >
-                {accounts.sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
+                {accounts.filter((a) => a.type !== "savings").sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} — {b.money(b.balances.get(a.id) ?? 0)}
                   </option>
@@ -296,6 +358,44 @@ function TransferPage() {
                 onChange={handleFormChange}
               />
             </div>
+
+            {toIsSavings && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase text-muted-foreground">
+                    Savings Goal <span className="text-danger">*</span>
+                  </Label>
+                  <select
+                    className={selectCls}
+                    name="goalId"
+                    value={form.goalId}
+                    onChange={handleFormChange}
+                  >
+                    <option value="">Select a goal</option>
+                    {goals.filter((g) => g.status !== "cancelled").map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase text-muted-foreground">
+                    Note <span className="text-danger">*</span>
+                  </Label>
+                  <Input
+                    type="text"
+                    name="note"
+                    placeholder="e.g. Monthly savings"
+                    value={form.note}
+                    onChange={handleFormChange}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    <span className="text-danger">* Required when saving into your Savings Wallet</span>
+                  </p>
+                </div>
+              </>
+            )}
 
             {showSuperAgent && (
               <div className="space-y-1.5">
@@ -388,62 +488,111 @@ function TransferPage() {
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? "Transferring..." : "Transfer money"}
             </Button>
-          </form>
-        </Panel>
+            </form>
+          </Panel>
+        </div>
 
-        <Panel title="Transfer history">
+        <div className="min-w-0">
+          <Panel title="Transfer history">
           {transfers.length ? (
-            <ul className="divide-y divide-border">
-              {transfers.map((t) => (
-                <li key={t.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3">
-                  <div className="min-w-0">
-                    <p className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-                      <span className="inline-flex items-center gap-1.5 truncate">
-                        <AccountIcon accountId={t.fromAccountId} sizeClassName="h-4 w-4" />
-                        {b.accountName(t.fromAccountId)}
-                      </span>
-                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="inline-flex items-center gap-1.5 truncate">
-                        <AccountIcon accountId={t.toAccountId} sizeClassName="h-4 w-4" />
-                        {b.accountName(t.toAccountId)}
-                      </span>
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {dayjs(t.date).format("DD MMM YYYY")}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="text-sm font-bold">{b.money(t.amount)}</span>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <button aria-label="Delete transfer" className="rounded-lg p-2 text-muted-foreground transition hover:bg-danger-soft hover:text-danger">
-                          <Trash2 className="h-4 w-4" />
+            <>
+              {/* Responsive table — horizontal scroll on small screens */}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <th className="px-4 py-3 font-semibold">
+                        <button className="inline-flex items-center gap-1" onClick={() => setSortDesc((s) => !s)}>
+                          Date <ArrowUpDown className="h-3 w-3" />
                         </button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete this transfer?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will permanently remove the transfer record and update account balances. This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => {
-                              deleteTransfer(t.id);
-                              toast.success("Transfer removed");
-                            }}
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                      </th>
+                      <th className="px-4 py-3 font-semibold">From</th>
+                      <th className="px-4 py-3 font-semibold">To</th>
+                      <th className="px-4 py-3 text-right font-semibold">Amount</th>
+                      <th className="px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedTransfers.map((t) => (
+                      <tr key={t.id} className="border-b border-border/60 transition hover:bg-muted/40">
+                        <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                          {dayjs(t.date).format("DD MMM YYYY")}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 font-semibold">
+                          <span className="inline-flex items-center gap-2">
+                            <AccountIcon accountId={t.fromAccountId} sizeClassName="h-4 w-4" />
+                            {b.accountName(t.fromAccountId)}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 font-semibold">
+                          <span className="inline-flex items-center gap-2">
+                            <AccountIcon accountId={t.toAccountId} sizeClassName="h-4 w-4" />
+                            {b.accountName(t.toAccountId)}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-bold">
+                          {b.money(t.amount)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <button aria-label="Delete transfer" className="rounded-lg p-2 text-muted-foreground transition hover:bg-danger-soft hover:text-danger">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete this transfer?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will permanently remove the transfer record and update account balances. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => {
+                                    deleteTransfer(t.id);
+                                    toast.success("Transfer removed");
+                                  }}
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 0}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {page + 1} / {totalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages - 1}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </>
           ) : (
             <EmptyState
               icon={ArrowLeftRight}
@@ -451,7 +600,8 @@ function TransferPage() {
               description="Transfers between wallets will appear here."
             />
           )}
-        </Panel>
+          </Panel>
+        </div>
 
         <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <AlertDialogContent>

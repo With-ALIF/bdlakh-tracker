@@ -49,6 +49,7 @@ export const DEFAULT_ACCOUNTS: Account[] = [
   { id: "a0000000-0000-0000-0000-000000000003", name: "Nagad", icon: "smartphone", color: "#F59E0B", type: "mfs", openingBalance: 0, isDefault: true, providerId: "a0000000-0000-0000-0000-000000000003" },
   { id: "a0000000-0000-0000-0000-000000000004", name: "Rocket", icon: "smartphone", color: "#7C3AED", type: "mfs", openingBalance: 0, isDefault: true, providerId: "a0000000-0000-0000-0000-000000000004" },
   { id: "a0000000-0000-0000-0000-000000000005", name: "Bank Account", icon: "landmark", color: "#2563EB", type: "bank", openingBalance: 0, isDefault: true, providerId: "a0000000-0000-0000-0000-000000000005" },
+  { id: "a0000000-0000-0000-0000-000000000006", name: "Savings Wallet", icon: "piggy", color: "#059669", type: "savings", openingBalance: 0, isDefault: true, providerId: "a0000000-0000-0000-0000-000000000006" },
 ];
 
 /** Maps payment_providers.id → default UI properties for virtual (no wallet yet) accounts */
@@ -58,6 +59,7 @@ export const PROVIDER_DEFAULTS: Record<string, { name: string; icon: string; col
   "a0000000-0000-0000-0000-000000000003": { name: "Nagad", icon: "smartphone", color: "#F59E0B", type: "mfs" },
   "a0000000-0000-0000-0000-000000000004": { name: "Rocket", icon: "smartphone", color: "#7C3AED", type: "mfs" },
   "a0000000-0000-0000-0000-000000000005": { name: "Bank Account", icon: "landmark", color: "#2563EB", type: "bank" },
+  "a0000000-0000-0000-0000-000000000006": { name: "Savings Wallet", icon: "piggy", color: "#059669", type: "savings" },
 };
 
 export const INCOME_CATEGORIES = [

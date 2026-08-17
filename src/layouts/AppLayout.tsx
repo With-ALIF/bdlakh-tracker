@@ -12,6 +12,7 @@ import {
   LogOut,
   Loader2,
   Bell,
+  PiggyBank,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ const NAV = [
   { to: "/wallets", label: "Wallets", icon: Wallet },
   { to: "/transfer", label: "Transfer", icon: ArrowLeftRight },
   { to: "/loan", label: "Loans", icon: Banknote },
+  { to: "/savings", label: "Savings", icon: PiggyBank },
   { to: "/chart", label: "Charts", icon: BarChart3 },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/settings", label: "Profile", icon: User },

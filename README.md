@@ -77,6 +77,23 @@ A modern personal finance application tailored for Bangladesh. Track daily incom
 - Appearance toggle (Light/Dark mode).
 - Category Manager access.
 
+### 11. Savings Goals (`/savings`)
+- **Goal Tracking**: Create savings goals with a target amount and optional deadline (e.g., New Laptop, Emergency Fund).
+- **Contribution Log**: Add savings from any wallet — the amount is deducted from the selected wallet balance automatically.
+- **Live Progress**: Progress bar with percentage, remaining amount, remaining days, and required daily/monthly saving targets.
+- **Goal Status**: Auto-computed status based on saving pace — `On Track`, `Slightly Behind`, `At Risk`, `Overdue`, or `Completed` — with a dynamic status message.
+- **Goal Detail View** (`/savings/$name`): Saving history table (date, wallet, amount, note), sortable, with edit/delete for contributions.
+- **PDF Export**: Download a savings report per goal.
+- **Summary Cards**: Total Saved, Active Goals, Completed, and Available Balance. Tabs for Active / Completed / All goals.
+
+---
+
+## Savings Goals Data Model
+
+- **`savings_goals`** — User-owned goals (`name`, `target_amount`, `deadline`, `status`). Unique per `(user_id, name)`.
+- **`saving_contributions`** — Each saving entry linked to a goal and wallet (`amount`, `saving_date`, `note`). Deleting a contribution restores the wallet balance.
+- Deleting a goal removes all its contributions and restores wallet balances.
+
 ---
 
 ## Default Categories
@@ -137,6 +154,8 @@ A modern personal finance application tailored for Bangladesh. Track daily incom
 - **loans** — Receivable/Payable loans
 - **loan_payments** — Loan payment records
 - **loan_increases** — Loan amount increases
+- **savings_goals** — Savings goals with targets and deadlines
+- **saving_contributions** — Per-goal savings entries linked to wallets
 
 ### Category System
 - **Default categories** (`categories` table): Shared across all users, stored once with `user_id = NULL`. Read-only.

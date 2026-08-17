@@ -242,7 +242,12 @@ function groupNotifications(items: AppNotification[]): NotificationGroup[] {
   const groups: NotificationGroup[] = [];
   for (const label of ["Today", "Yesterday", "Earlier"] as const) {
     if (grouped[label].length > 0) {
-      groups.push({ label, items: grouped[label] });
+      groups.push({
+        label,
+        items: grouped[label].sort(
+          (a, b) => dayjs(b.timestamp).valueOf() - dayjs(a.timestamp).valueOf(),
+        ),
+      });
     }
   }
 

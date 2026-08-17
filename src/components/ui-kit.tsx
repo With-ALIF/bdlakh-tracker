@@ -33,7 +33,7 @@ export function StatCard({
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {label}
           </p>
-          <p className="mt-2 truncate text-xl font-bold tracking-tight sm:text-2xl">{value}</p>
+          <p className="mt-2 break-words text-lg font-bold leading-tight tracking-tight sm:text-xl">{value}</p>
           {hint ? <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p> : null}
         </div>
         <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", tones[tone])}>

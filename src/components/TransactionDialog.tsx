@@ -228,7 +228,7 @@ export function TransactionDialog({ open, onOpenChange, transaction }: Props) {
                 ))}
               </div>
               {isBkashCharge && (
-                <p className="text-xs text-muted-foreground">{accountCharge.chargeAmount} Tk charge will be debited separately</p>
+                <p className="text-xs text-muted-foreground">{accountCharge.flatFee} Tk charge will be debited separately</p>
               )}
             </div>
           )}

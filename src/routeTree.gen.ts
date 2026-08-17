@@ -19,6 +19,8 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TransactionsRouteImport } from './routes/transactions'
 import { Route as TransferRouteImport } from './routes/transfer'
 import { Route as WalletsRouteImport } from './routes/wallets'
+import { Route as SavingsIndexRouteImport } from './routes/savings.index'
+import { Route as SavingsNameRouteImport } from './routes/savings.$name'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -70,6 +72,16 @@ const WalletsRoute = WalletsRouteImport.update({
   path: '/wallets',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SavingsIndexRoute = SavingsIndexRouteImport.update({
+  id: '/savings/',
+  path: '/savings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SavingsNameRoute = SavingsNameRouteImport.update({
+  id: '/savings/$name',
+  path: '/savings/$name',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -82,6 +94,8 @@ export interface FileRoutesByFullPath {
   '/transactions': typeof TransactionsRoute
   '/transfer': typeof TransferRoute
   '/wallets': typeof WalletsRoute
+  '/savings/$name': typeof SavingsNameRoute
+  '/savings/': typeof SavingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -94,6 +108,8 @@ export interface FileRoutesByTo {
   '/transactions': typeof TransactionsRoute
   '/transfer': typeof TransferRoute
   '/wallets': typeof WalletsRoute
+  '/savings/$name': typeof SavingsNameRoute
+  '/savings': typeof SavingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -107,6 +123,8 @@ export interface FileRoutesById {
   '/transactions': typeof TransactionsRoute
   '/transfer': typeof TransferRoute
   '/wallets': typeof WalletsRoute
+  '/savings/$name': typeof SavingsNameRoute
+  '/savings/': typeof SavingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -121,6 +139,8 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/transfer'
     | '/wallets'
+    | '/savings/$name'
+    | '/savings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -133,6 +153,8 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/transfer'
     | '/wallets'
+    | '/savings/$name'
+    | '/savings'
   id:
     | '__root__'
     | '/'
@@ -145,6 +167,8 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/transfer'
     | '/wallets'
+    | '/savings/$name'
+    | '/savings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -158,6 +182,8 @@ export interface RootRouteChildren {
   TransactionsRoute: typeof TransactionsRoute
   TransferRoute: typeof TransferRoute
   WalletsRoute: typeof WalletsRoute
+  SavingsNameRoute: typeof SavingsNameRoute
+  SavingsIndexRoute: typeof SavingsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -232,6 +258,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WalletsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/savings/': {
+      id: '/savings/'
+      path: '/savings'
+      fullPath: '/savings/'
+      preLoaderRoute: typeof SavingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/savings/$name': {
+      id: '/savings/$name'
+      path: '/savings/$name'
+      fullPath: '/savings/$name'
+      preLoaderRoute: typeof SavingsNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -246,6 +286,8 @@ const rootRouteChildren: RootRouteChildren = {
   TransactionsRoute: TransactionsRoute,
   TransferRoute: TransferRoute,
   WalletsRoute: WalletsRoute,
+  SavingsNameRoute: SavingsNameRoute,
+  SavingsIndexRoute: SavingsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

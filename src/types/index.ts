@@ -1,20 +1,13 @@
-/** Core domain types for the finance tracker. */
-
 export type TxType = "income" | "expense";
 
 export interface Account {
   id: string;
   name: string;
-  /** lucide icon key, see ACCOUNT_ICONS */
   icon: string;
-  /** hex color indicator */
   color: string;
   type: string;
-  /** starting balance; live balance is derived from transactions */
   openingBalance: number;
-  /** default accounts cannot be deleted */
   isDefault?: boolean;
-  /** links to payment_providers.id — set on both real wallets and virtual (provider-only) accounts */
   providerId?: string;
 }
 
@@ -81,6 +74,69 @@ export interface AppData {
   transactions: Transaction[];
   transfers: Transfer[];
   loans: Loan[];
+}
+
+export type GoalStatus = "active" | "completed" | "cancelled";
+
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  deadline?: string;
+  status: GoalStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavingContribution {
+  id: string;
+  goalId: string;
+  walletId?: string;
+  savingsWalletId?: string;
+  transferId?: string;
+  amount: number;
+  date: string;
+  note?: string;
+  createdAt: string;
+}
+
+export type WithdrawalReason =
+  | "Debt Payment"
+  | "Education"
+  | "Emergency"
+  | "Family"
+  | "Gift"
+  | "Investment"
+  | "Medical"
+  | "Others"
+  | "Personal"
+  | "Unexpected Expense"
+  | "Urgent Purchase";
+
+export const WITHDRAWAL_REASONS: WithdrawalReason[] = [
+  "Debt Payment",
+  "Education",
+  "Emergency",
+  "Family",
+  "Gift",
+  "Investment",
+  "Medical",
+  "Others",
+  "Personal",
+  "Unexpected Expense",
+  "Urgent Purchase",
+];
+
+export interface SavingWithdrawal {
+  id: string;
+  goalId: string;
+  walletId?: string;
+  savingsWalletId?: string;
+  transferId?: string;
+  amount: number;
+  reason: WithdrawalReason;
+  date: string;
+  createdAt: string;
 }
 
 export interface TransferCharge {

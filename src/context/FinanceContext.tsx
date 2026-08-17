@@ -232,6 +232,9 @@ interface FinanceContextValue extends AppData {
   deleteTransaction: (id: string) => void;
   addTransfer: (t: Omit<Transfer, "id" | "createdAt">) => void;
   deleteTransfer: (id: string) => void;
+  createTransferApi: (t: Omit<Transfer, "id" | "createdAt">) => Promise<Transfer | null>;
+  updateTransferApi: (id: string, t: Omit<Transfer, "id" | "createdAt">) => Promise<boolean>;
+  deleteTransferApi: (id: string) => Promise<boolean>;
   addAccount: (a: Omit<Account, "id">) => void;
   updateAccount: (id: string, a: Omit<Account, "id">) => void;
   deleteAccount: (id: string) => void;
@@ -248,6 +251,10 @@ interface FinanceContextValue extends AppData {
   updateCategory: (id: string, name: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   toggleCategory: (id: string, enabled: boolean) => Promise<void>;
+  /** Materialises a virtual/provider-only account into a real wallet row. */
+  ensureWallet: (accountId: string) => Promise<string>;
+  /** Ensures the dedicated Savings Wallet exists in the database. */
+  ensureSavingsWallet: () => Promise<string>;
 }
 
 const FinanceContext = createContext<FinanceContextValue | null>(null);
@@ -574,8 +581,97 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [userId, data.accounts, patch],
   );
 
+  const ensureSavingsWallet = useCallback(async (): Promise<string> => {
+    if (!userId) return "";
+    const savingsAccount =
+      data.accounts.find(
+        (a) => a.type === "savings" || a.name.toLowerCase().includes("savings"),
+      ) ?? DEFAULT_ACCOUNTS.find((a) => a.type === "savings") ?? DEFAULT_ACCOUNTS[5];
+    return ensureWallet(savingsAccount.id);
+  }, [userId, data.accounts, ensureWallet]);
 
-  /* ─── CRUD ──────────────────────────────────────────────── */
+  const createTransferApi = useCallback(
+    async (t: Omit<Transfer, "id" | "createdAt">): Promise<Transfer | null> => {
+      if (!userId) return null;
+      try {
+        const fromId = await ensureWallet(t.fromAccountId);
+        const toId = await ensureWallet(t.toAccountId);
+        const resolved = { ...t, fromAccountId: fromId, toAccountId: toId };
+
+        const { data: row } = await supabase
+          .from("transfers")
+          .insert(transferToRow(resolved, userId))
+          .select()
+          .single();
+        if (row) {
+          const transferObj = rowToTransfer(row);
+          patch((d) => ({
+            ...d,
+            transfers: [transferObj, ...d.transfers],
+          }));
+          return transferObj;
+        }
+      } catch (err) {
+        console.error("createTransferApi failed", err);
+      }
+      return null;
+    },
+    [userId, patch, ensureWallet],
+  );
+
+  const updateTransferApi = useCallback(
+    async (id: string, t: Omit<Transfer, "id" | "createdAt">): Promise<boolean> => {
+      if (!userId) return false;
+      try {
+        const fromId = await ensureWallet(t.fromAccountId);
+        const toId = await ensureWallet(t.toAccountId);
+        const resolved = { ...t, fromAccountId: fromId, toAccountId: toId };
+
+        const { error } = await supabase
+          .from("transfers")
+          .update({
+            from_wallet_id: resolved.fromAccountId,
+            to_wallet_id: resolved.toAccountId,
+            amount: resolved.amount,
+            transfer_date: resolved.date,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", id);
+
+        if (!error) {
+          patch((d) => ({
+            ...d,
+            transfers: d.transfers.map((x) =>
+              x.id === id ? { ...x, ...resolved } : x,
+            ),
+          }));
+          return true;
+        }
+      } catch (err) {
+        console.error("updateTransferApi failed", err);
+      }
+      return false;
+    },
+    [userId, patch, ensureWallet],
+  );
+
+  const deleteTransferApi = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (!userId) return false;
+      try {
+        await supabase.from("transfers").delete().eq("id", id);
+        patch((d) => ({
+          ...d,
+          transfers: d.transfers.filter((x) => x.id !== id),
+        }));
+        return true;
+      } catch (err) {
+        console.error("deleteTransferApi failed", err);
+        return false;
+      }
+    },
+    [userId, patch],
+  );
 
   const addTransaction = useCallback(
     (t: Omit<Transaction, "id" | "createdAt">): Promise<boolean> => {
@@ -1717,6 +1813,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       deleteTransaction,
       addTransfer,
       deleteTransfer,
+      createTransferApi,
+      updateTransferApi,
+      deleteTransferApi,
       addAccount,
       updateAccount,
       deleteAccount,
@@ -1733,8 +1832,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       updateCategory,
       deleteCategory,
       toggleCategory,
+      ensureWallet,
+      ensureSavingsWallet,
     }),
     [
+      ensureWallet,
+      ensureSavingsWallet,
       data,
       ready,
       categories,
@@ -1746,6 +1849,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       deleteTransaction,
       addTransfer,
       deleteTransfer,
+      createTransferApi,
+      updateTransferApi,
+      deleteTransferApi,
       addAccount,
       updateAccount,
       deleteAccount,
