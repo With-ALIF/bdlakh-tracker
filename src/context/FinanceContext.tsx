@@ -659,11 +659,52 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     async (id: string): Promise<boolean> => {
       if (!userId) return false;
       try {
+        // Check for linked savings contribution
+        const { data: linkedContrib } = await supabase
+          .from("saving_contributions")
+          .select("id, goal_id")
+          .eq("transfer_id", id)
+          .maybeSingle();
+
+        // Check for linked savings withdrawal
+        const { data: linkedWithdraw } = await supabase
+          .from("savings_withdrawals")
+          .select("id, goal_id")
+          .eq("transfer_id", id)
+          .maybeSingle();
+
+        // Delete linked contribution or withdrawal first
+        if (linkedContrib) {
+          await supabase.from("saving_contributions").delete().eq("id", linkedContrib.id);
+        }
+        if (linkedWithdraw) {
+          await supabase.from("savings_withdrawals").delete().eq("id", linkedWithdraw.id);
+        }
+
         await supabase.from("transfers").delete().eq("id", id);
         patch((d) => ({
           ...d,
           transfers: d.transfers.filter((x) => x.id !== id),
         }));
+
+        // Sync goal totals if a linked record was deleted
+        const goalId = linkedContrib?.goal_id ?? linkedWithdraw?.goal_id;
+        if (goalId) {
+          const [contribs, withdraws] = await Promise.all([
+            supabase.from("saving_contributions").select("amount").eq("goal_id", goalId),
+            supabase.from("savings_withdrawals").select("amount").eq("goal_id", goalId),
+          ]);
+          const totalContrib = (contribs.data ?? []).reduce((s, r) => s + Number(r.amount), 0);
+          const totalWithdraw = (withdraws.data ?? []).reduce((s, r) => s + Number(r.amount), 0);
+          const saved = totalContrib - totalWithdraw;
+          const { data: goal } = await supabase.from("savings_goals").select("target_amount, status").eq("id", goalId).maybeSingle();
+          let status = goal?.status ?? "active";
+          if (status !== "cancelled" && goal) {
+            status = goal.target_amount > 0 && saved >= goal.target_amount ? "completed" : "active";
+          }
+          await supabase.from("savings_goals").update({ saved_amount: saved, status, updated_at: new Date().toISOString() }).eq("id", goalId);
+        }
+
         return true;
       } catch (err) {
         console.error("deleteTransferApi failed", err);
@@ -825,8 +866,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (!userId) return;
       (async () => {
         try {
-          // Find the transfer so we can locate its charge transaction
           const transfer = data.transfers.find((t) => t.id === id);
+
+          // Check for linked savings contribution or withdrawal
+          const [{ data: linkedContrib }, { data: linkedWithdraw }] = await Promise.all([
+            supabase.from("saving_contributions").select("id, goal_id").eq("transfer_id", id).maybeSingle(),
+            supabase.from("savings_withdrawals").select("id, goal_id").eq("transfer_id", id).maybeSingle(),
+          ]);
+
+          if (linkedContrib) {
+            await supabase.from("saving_contributions").delete().eq("id", linkedContrib.id);
+          }
+          if (linkedWithdraw) {
+            await supabase.from("savings_withdrawals").delete().eq("id", linkedWithdraw.id);
+          }
 
           await supabase.from("transfers").delete().eq("id", id);
 
@@ -853,6 +906,24 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
               ? d.transactions.filter((x) => x.id !== chargeId)
               : d.transactions,
           }));
+
+          // Sync goal totals if a linked record was deleted
+          const goalId = linkedContrib?.goal_id ?? linkedWithdraw?.goal_id;
+          if (goalId) {
+            const [contribs, withdraws] = await Promise.all([
+              supabase.from("saving_contributions").select("amount").eq("goal_id", goalId),
+              supabase.from("savings_withdrawals").select("amount").eq("goal_id", goalId),
+            ]);
+            const totalContrib = (contribs.data ?? []).reduce((s, r) => s + Number(r.amount), 0);
+            const totalWithdraw = (withdraws.data ?? []).reduce((s, r) => s + Number(r.amount), 0);
+            const saved = totalContrib - totalWithdraw;
+            const { data: goal } = await supabase.from("savings_goals").select("target_amount, status").eq("id", goalId).maybeSingle();
+            let status = goal?.status ?? "active";
+            if (status !== "cancelled" && goal) {
+              status = goal.target_amount > 0 && saved >= goal.target_amount ? "completed" : "active";
+            }
+            await supabase.from("savings_goals").update({ saved_amount: saved, status, updated_at: new Date().toISOString() }).eq("id", goalId);
+          }
         } catch (err) {
           console.error("deleteTransfer failed", err);
         }

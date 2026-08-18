@@ -78,7 +78,7 @@ function calculateTransferCharge(
 
 function TransferPage() {
   const { accounts, transfers, addTransfer, addTransaction, deleteTransfer, transferCharges } = useFinance();
-  const { goals, addContribution } = useSavings();
+  const { goals, addContribution, contributions, withdrawals, deleteContribution, deleteWithdrawal, refresh } = useSavings();
   const b = useBalances();
 
   const transferableAccounts = useMemo(
@@ -95,7 +95,6 @@ function TransferPage() {
     chargeType: "auto" as "auto" | "custom",
     customCharge: "",
     goalId: "",
-    note: "",
   });
 
   useEffect(() => {
@@ -221,7 +220,6 @@ function TransferPage() {
         walletId: form.fromAccountId,
         amount,
         date: form.date,
-        note: form.note.trim() || undefined,
       });
       if (!ok) {
         toast.error("Could not save this saving");
@@ -229,7 +227,7 @@ function TransferPage() {
         setConfirmOpen(false);
         return;
       }
-      setForm({ ...form, amount: "", isSuperAgent: false, chargeType: "auto", customCharge: "", goalId: "", note: "" });
+      setForm({ ...form, amount: "", isSuperAgent: false, chargeType: "auto", customCharge: "", goalId: "" });
       toast.success("Saving added");
       setIsSubmitting(false);
       setConfirmOpen(false);
@@ -257,7 +255,7 @@ function TransferPage() {
       }
     }
 
-    setForm({ ...form, amount: "", isSuperAgent: false, chargeType: "auto", customCharge: "", goalId: "", note: "" });
+    setForm({ ...form, amount: "", isSuperAgent: false, chargeType: "auto", customCharge: "", goalId: "" });
     toast.success("Transfer saved");
     setIsSubmitting(false);
     setConfirmOpen(false);
@@ -284,11 +282,6 @@ function TransferPage() {
     }
     if (toIsSavings && !form.goalId) {
       toast.error("Choose a savings goal for this saving");
-      setIsSubmitting(false);
-      return;
-    }
-    if (toIsSavings && !form.note.trim()) {
-      toast.error("Add a note for this saving");
       setIsSubmitting(false);
       return;
     }
@@ -378,21 +371,6 @@ function TransferPage() {
                       </option>
                     ))}
                   </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase text-muted-foreground">
-                    Note <span className="text-danger">*</span>
-                  </Label>
-                  <Input
-                    type="text"
-                    name="note"
-                    placeholder="e.g. Monthly savings"
-                    value={form.note}
-                    onChange={handleFormChange}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    <span className="text-danger">* Required when saving into your Savings Wallet</span>
-                  </p>
                 </div>
               </>
             )}
@@ -550,8 +528,17 @@ function TransferPage() {
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                                 <AlertDialogAction
-                                  onClick={() => {
-                                    deleteTransfer(t.id);
+                                  onClick={async () => {
+                                    const linkedContrib = contributions.find((c) => c.transferId === t.id);
+                                    const linkedWithdraw = withdrawals.find((w) => w.transferId === t.id);
+                                    if (linkedContrib) {
+                                      await deleteContribution(linkedContrib.id);
+                                    } else if (linkedWithdraw) {
+                                      await deleteWithdrawal(linkedWithdraw.id);
+                                    } else {
+                                      deleteTransfer(t.id);
+                                      await refresh();
+                                    }
                                     toast.success("Transfer removed");
                                   }}
                                 >

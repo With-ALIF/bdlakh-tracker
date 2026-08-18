@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -96,6 +97,7 @@ interface SavingsContextValue {
   addWithdrawal: (input: WithdrawalInput) => Promise<boolean>;
   updateWithdrawal: (id: string, input: WithdrawalInput) => Promise<boolean>;
   deleteWithdrawal: (id: string) => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const SavingsContext = createContext<SavingsContextValue | null>(null);
@@ -115,6 +117,7 @@ export function SavingsProvider({ children }: { children: ReactNode }) {
   const [contributions, setContributions] = useState<SavingContribution[]>([]);
   const [withdrawals, setWithdrawals] = useState<SavingWithdrawal[]>([]);
   const [ready, setReady] = useState(false);
+  const loadRef = useRef<(uid: string | null) => Promise<void>>(async () => {});
 
   /* auth + initial load */
   useEffect(() => {
@@ -126,6 +129,7 @@ export function SavingsProvider({ children }: { children: ReactNode }) {
           setUserId(null);
           setGoals([]);
           setContributions([]);
+          setWithdrawals([]);
           setReady(true);
         }
         return;
@@ -160,6 +164,8 @@ export function SavingsProvider({ children }: { children: ReactNode }) {
       setReady(true);
     };
 
+    loadRef.current = load;
+
     supabase.auth.getUser().then(({ data }) => load(data.user?.id ?? null));
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
@@ -174,6 +180,12 @@ export function SavingsProvider({ children }: { children: ReactNode }) {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  const refresh = useCallback(async () => {
+    if (!userId) return;
+    setReady(false);
+    await loadRef.current(userId);
+  }, [userId]);
 
   const contributionsFor = useCallback(
     (goalId: string) =>
@@ -355,7 +367,6 @@ export function SavingsProvider({ children }: { children: ReactNode }) {
         transfer_id: transferId,
         amount: input.amount,
         saving_date: input.date,
-        note: input.note ?? null,
       };
 
       let { data, error } = await supabase
@@ -364,10 +375,9 @@ export function SavingsProvider({ children }: { children: ReactNode }) {
         .select()
         .single();
 
-      if (error && (error.code === "42703" || error.message.includes("column"))) {
+      if (error && (error.code === "42703" || error.code === "PGRST204" || error.message.includes("column"))) {
         delete payload.transfer_id;
         delete payload.savings_wallet_id;
-        delete payload.note;
         const res = await supabase
           .from("saving_contributions")
           .insert(payload)
@@ -433,7 +443,6 @@ export function SavingsProvider({ children }: { children: ReactNode }) {
         transfer_id: transferId,
         amount: input.amount,
         saving_date: input.date,
-        note: input.note ?? null,
         updated_at: new Date().toISOString(),
       };
 
@@ -442,10 +451,9 @@ export function SavingsProvider({ children }: { children: ReactNode }) {
         .update(updatePayload)
         .eq("id", id);
 
-      if (error && (error.code === "42703" || error.message.includes("column"))) {
+      if (error && (error.code === "42703" || error.code === "PGRST204" || error.message.includes("column"))) {
         delete updatePayload.transfer_id;
         delete updatePayload.savings_wallet_id;
-        delete updatePayload.note;
         const res = await supabase
           .from("saving_contributions")
           .update(updatePayload)
@@ -466,7 +474,6 @@ export function SavingsProvider({ children }: { children: ReactNode }) {
             transferId: transferId ?? undefined,
             amount: input.amount,
             date: input.date,
-            note: input.note ?? undefined,
           }
           : c,
       );
@@ -693,6 +700,7 @@ export function SavingsProvider({ children }: { children: ReactNode }) {
       addWithdrawal,
       updateWithdrawal,
       deleteWithdrawal,
+      refresh,
     }),
     [
       ready,
@@ -713,6 +721,7 @@ export function SavingsProvider({ children }: { children: ReactNode }) {
       addWithdrawal,
       updateWithdrawal,
       deleteWithdrawal,
+      refresh,
     ],
   );
 
